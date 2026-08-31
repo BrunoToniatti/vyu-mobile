@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
-import { registerUser } from '../services/auth';
+import { registerUser, loginUser } from '../services/auth';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'Register'> };
 
@@ -128,9 +128,8 @@ export default function RegisterScreen({ navigation }: Props) {
     setLoading(true);
     try {
       await registerUser(form);
-      Alert.alert('Sucesso!', 'Conta criada com sucesso. Faça login para continuar.', [
-        { text: 'OK', onPress: () => navigation.replace('Login') },
-      ]);
+      await loginUser(form.email, form.password);
+      navigation.replace('Onboarding');
     } catch (err: any) {
       const errors = err?.response?.data?.errors;
       const msg = errors
