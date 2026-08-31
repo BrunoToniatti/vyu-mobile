@@ -16,6 +16,7 @@ export interface Restaurant {
   site?: string;
   instagram?: string;
   path_logo?: string;
+  category_items?: number[];
 }
 
 export interface ApiResponse<T> {

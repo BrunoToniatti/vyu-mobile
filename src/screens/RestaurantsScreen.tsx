@@ -17,6 +17,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 import { getPublicRestaurants } from '../services/restaurant';
 import { getStoredUser, logout } from '../services/auth';
+import { getUserPreferences } from '../services/category';
 import { Restaurant, UserApp } from '../types';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'Restaurants'> };
@@ -27,11 +28,26 @@ export default function RestaurantsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<UserApp | null>(null);
+  const [preferredIds, setPreferredIds] = useState<Set<number>>(new Set());
 
-  async function fetchRestaurants(query?: string) {
+  async function fetchData(query?: string) {
     try {
-      const data = await getPublicRestaurants(query);
-      setRestaurants(data);
+      const [data, prefs] = await Promise.all([
+        getPublicRestaurants(query),
+        getUserPreferences().catch(() => []),
+      ]);
+      const prefItemIds = new Set(prefs.map((p: any) => p.id));
+      setPreferredIds(prefItemIds as Set<number>);
+
+      // Sort: restaurants matching user preferences first
+      const sorted = [...data].sort((a, b) => {
+        const aMatch = (a.category_items ?? []).some((id: number) => prefItemIds.has(id));
+        const bMatch = (b.category_items ?? []).some((id: number) => prefItemIds.has(id));
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return 0;
+      });
+      setRestaurants(sorted);
     } catch {
       Alert.alert('Erro', 'Não foi possível carregar os restaurantes.');
     } finally {
@@ -43,19 +59,19 @@ export default function RestaurantsScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       getStoredUser().then(setUser);
-      fetchRestaurants();
+      fetchData();
     }, [])
   );
 
   function onSearch() {
     setLoading(true);
-    fetchRestaurants(search.trim() || undefined);
+    fetchData(search.trim() || undefined);
   }
 
   function onRefresh() {
     setRefreshing(true);
     setSearch('');
-    fetchRestaurants();
+    fetchData();
   }
 
   async function handleLogout() {
@@ -63,7 +79,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
     navigation.replace('Login');
   }
 
-  function RestaurantCard({ item }: { item: Restaurant }) {
+  function RestaurantCard({ item, index }: { item: Restaurant; index: number }) {
     const initials = item.name
       .split(' ')
       .slice(0, 2)
@@ -71,14 +87,20 @@ export default function RestaurantsScreen({ navigation }: Props) {
       .join('')
       .toUpperCase();
 
+    const isMatch = preferredIds.size > 0 &&
+      (item.category_items ?? []).some((id: number) => preferredIds.has(id));
+
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, isMatch && styles.cardHighlight]}>
+        {isMatch && (
+          <View style={styles.matchBadge}>
+            <Text style={styles.matchBadgeText}>✨ Combina com você</Text>
+          </View>
+        )}
         <View style={styles.cardTop}>
-          {/* Avatar */}
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
-
           <View style={styles.cardInfo}>
             <Text style={styles.restaurantName} numberOfLines={1}>{item.name}</Text>
             <Text style={styles.address} numberOfLines={1}>📍 {item.address}</Text>
@@ -115,19 +137,26 @@ export default function RestaurantsScreen({ navigation }: Props) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1a237e" />
 
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerTitle}>🍽️ VYU</Text>
             <Text style={styles.headerSub}>{greeting}</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.8}>
-            <Text style={styles.logoutText}>Sair</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Profile')}
+              style={styles.iconBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.iconBtnText}>👤</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.8}>
+              <Text style={styles.logoutText}>Sair</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Search */}
         <View style={styles.searchRow}>
           <TextInput
             style={styles.searchInput}
@@ -144,10 +173,12 @@ export default function RestaurantsScreen({ navigation }: Props) {
         </View>
       </View>
 
-      {/* Count */}
       {!loading && restaurants.length > 0 && (
         <View style={styles.countBar}>
-          <Text style={styles.countText}>{restaurants.length} restaurante{restaurants.length !== 1 ? 's' : ''} encontrado{restaurants.length !== 1 ? 's' : ''}</Text>
+          <Text style={styles.countText}>
+            {restaurants.length} restaurante{restaurants.length !== 1 ? 's' : ''} encontrado{restaurants.length !== 1 ? 's' : ''}
+            {preferredIds.size > 0 ? ' · ordenado por preferência' : ''}
+          </Text>
         </View>
       )}
 
@@ -160,7 +191,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
         <FlatList
           data={restaurants}
           keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => <RestaurantCard item={item} />}
+          renderItem={({ item, index }) => <RestaurantCard item={item} index={index} />}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#3f51b5']} />
@@ -182,13 +213,6 @@ export default function RestaurantsScreen({ navigation }: Props) {
 const PRIMARY = '#1a237e';
 const ACCENT = '#3f51b5';
 
-const AVATAR_COLORS = ['#3f51b5', '#7986cb', '#283593', '#5c6bc0', '#1565c0', '#0288d1'];
-function avatarColor(name: string) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f5fb' },
 
@@ -206,6 +230,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: '#c5cae9', marginTop: 2 },
+  headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  iconBtn: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 38, height: 38,
+    borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  iconBtnText: { fontSize: 18 },
   logoutBtn: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 14,
@@ -254,6 +287,17 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 4,
   },
+  cardHighlight: {
+    borderWidth: 2,
+    borderColor: '#3f51b5',
+  },
+  matchBadge: {
+    backgroundColor: '#e8eaf6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  matchBadgeText: { fontSize: 12, color: '#3f51b5', fontWeight: '700' },
+
   cardTop: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
   avatar: {
     width: 48, height: 48, borderRadius: 14,
@@ -278,4 +322,3 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 4 },
   emptySubtitle: { fontSize: 13, color: '#9ca3af' },
 });
-
