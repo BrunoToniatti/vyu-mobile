@@ -1,20 +1,18 @@
 import React from 'react';
-import {
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  Platform,
-} from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const TEAL = '#00BCD4';
+const INACTIVE = '#9e9e9e';
 
-const ICONS: Record<string, string> = {
-  Restaurants: '🍽️',
-  Map: '🗺️',
-  Profile: '👤',
+type IconName = React.ComponentProps<typeof MaterialIcons>['name'];
+
+const ICONS: Record<string, IconName> = {
+  Restaurants: 'restaurant',
+  Map: 'map',
+  Profile: 'person',
 };
 
 const LABELS: Record<string, string> = {
@@ -23,7 +21,7 @@ const LABELS: Record<string, string> = {
   Profile: 'Perfil',
 };
 
-export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -44,7 +42,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             return (
               <TouchableOpacity key={route.key} style={styles.centerWrapper} onPress={onPress} activeOpacity={0.8}>
                 <View style={[styles.centerButton, focused && styles.centerButtonFocused]}>
-                  <Text style={styles.centerIcon}>{ICONS[route.name]}</Text>
+                  <MaterialIcons name={ICONS[route.name]} size={28} color="#fff" />
                 </View>
                 <Text style={[styles.label, focused && styles.labelFocused]}>{LABELS[route.name]}</Text>
               </TouchableOpacity>
@@ -53,7 +51,11 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
 
           return (
             <TouchableOpacity key={route.key} style={styles.tab} onPress={onPress} activeOpacity={0.7}>
-              <Text style={[styles.icon, focused && styles.iconFocused]}>{ICONS[route.name]}</Text>
+              <MaterialIcons
+                name={ICONS[route.name]}
+                size={24}
+                color={focused ? TEAL : INACTIVE}
+              />
               <Text style={[styles.label, focused && styles.labelFocused]}>{LABELS[route.name]}</Text>
             </TouchableOpacity>
           );
@@ -96,17 +98,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: 2,
   },
-  icon: { fontSize: 22, opacity: 0.45 },
-  iconFocused: { opacity: 1 },
   label: {
     fontSize: 10,
-    marginTop: 2,
-    color: '#9e9e9e',
+    marginTop: 3,
+    color: INACTIVE,
     fontWeight: '500',
   },
   labelFocused: { color: TEAL, fontWeight: '700' },
 
-  // Center elevated button
   centerWrapper: {
     flex: 1,
     alignItems: 'center',
@@ -134,5 +133,4 @@ const styles = StyleSheet.create({
   centerButtonFocused: {
     backgroundColor: '#0097A7',
   },
-  centerIcon: { fontSize: 26 },
 });
