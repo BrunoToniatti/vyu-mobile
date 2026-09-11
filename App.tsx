@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
-import RestaurantsScreen from './src/screens/RestaurantsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import PreferencesScreen from './src/screens/PreferencesScreen';
+import RestaurantsScreen from './src/screens/RestaurantsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import MapScreen from './src/screens/MapScreen';
+import FloatingTabBar from './src/components/FloatingTabBar';
 import { isAuthenticated } from './src/services/auth';
 
 export type RootStackParamList = {
@@ -16,11 +19,30 @@ export type RootStackParamList = {
   Register: undefined;
   Onboarding: undefined;
   Preferences: undefined;
+  Main: undefined;
+};
+
+export type MainTabParamList = {
   Restaurants: undefined;
+  Map: undefined;
   Profile: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      <Tab.Screen name="Restaurants" component={RestaurantsScreen} />
+      <Tab.Screen name="Map" component={MapScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
 
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList | null>(null);
@@ -33,7 +55,7 @@ export default function App() {
         return;
       }
       const onboardingDone = await AsyncStorage.getItem('onboarding_done');
-      setInitialRoute(onboardingDone ? 'Restaurants' : 'Onboarding');
+      setInitialRoute(onboardingDone ? 'Main' : 'Onboarding');
     }
     init();
   }, []);
@@ -53,8 +75,7 @@ export default function App() {
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Preferences" component={PreferencesScreen} />
-        <Stack.Screen name="Restaurants" component={RestaurantsScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>
   );

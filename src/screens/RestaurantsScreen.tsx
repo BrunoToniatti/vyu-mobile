@@ -13,14 +13,14 @@ import {
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../App';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { MainTabParamList } from '../../App';
 import { getPublicRestaurants } from '../services/restaurant';
 import { getStoredUser, logout } from '../services/auth';
 import { getUserPreferences } from '../services/category';
 import { Restaurant, UserApp } from '../types';
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, 'Restaurants'> };
+type Props = { navigation: BottomTabNavigationProp<MainTabParamList, 'Restaurants'> };
 
 export default function RestaurantsScreen({ navigation }: Props) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -76,7 +76,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
 
   async function handleLogout() {
     await logout();
-    navigation.replace('Login');
+    navigation.getParent()?.reset({ index: 0, routes: [{ name: 'Login' }] });
   }
 
   function RestaurantCard({ item, index }: { item: Restaurant; index: number }) {
@@ -145,7 +145,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('Profile')}
+              onPress={() => navigation.navigate('Profile' as any)}
               style={styles.iconBtn}
               activeOpacity={0.8}
             >

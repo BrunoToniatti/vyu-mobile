@@ -3,15 +3,15 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, StatusBar, Platform, TextInput,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../App';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { MainTabParamList } from '../../App';
 import { getStoredUser, logout } from '../services/auth';
 import { getAllCategories, getUserPreferences, saveUserPreferences, Category } from '../services/category';
 import { UserApp } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, 'Profile'> };
+type Props = { navigation: BottomTabNavigationProp<MainTabParamList, 'Profile'> };
 
 export default function ProfileScreen({ navigation }: Props) {
   const [user, setUser] = useState<UserApp | null>(null);
@@ -84,7 +84,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
   async function handleLogout() {
     await logout();
-    navigation.replace('Login');
+    navigation.getParent()?.reset({ index: 0, routes: [{ name: 'Login' }] });
   }
 
   if (loading) {
@@ -100,7 +100,7 @@ export default function ProfileScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" backgroundColor="#1a237e" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.navigate('Restaurants')} style={styles.backBtn}>
           <Text style={styles.backText}>← Voltar</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Meu Perfil</Text>
