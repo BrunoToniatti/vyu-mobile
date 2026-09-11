@@ -27,7 +27,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   async function handleNo() {
     await AsyncStorage.setItem('onboarding_done', 'true');
-    navigation.replace('Restaurants');
+    navigation.replace('Main');
   }
 
   return (

@@ -33,7 +33,7 @@ export default function LoginScreen({ navigation }: Props) {
     setLoading(true);
     try {
       await loginUser(identifier.trim(), password);
-      navigation.replace('Restaurants');
+      navigation.replace('Main');
     } catch (err: any) {
       const isNetwork = !err?.response;
       const msg = isNetwork

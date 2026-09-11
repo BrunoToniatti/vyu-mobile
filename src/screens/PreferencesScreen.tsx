@@ -36,7 +36,7 @@ export default function PreferencesScreen({ navigation }: Props) {
     try {
       await saveUserPreferences(Array.from(selected));
       await AsyncStorage.setItem('onboarding_done', 'true');
-      navigation.replace('Restaurants');
+      navigation.replace('Main');
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar suas preferências.');
     } finally {
@@ -46,7 +46,7 @@ export default function PreferencesScreen({ navigation }: Props) {
 
   async function handleSkip() {
     await AsyncStorage.setItem('onboarding_done', 'true');
-    navigation.replace('Restaurants');
+    navigation.replace('Main');
   }
 
   if (loading) {
