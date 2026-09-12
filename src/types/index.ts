@@ -33,8 +33,12 @@ export interface ApiResponse<T> {
 
 export interface Review {
   id: number;
+  user_id: number;
   user_name: string;
   user_photo_url?: string | null;
+  user_email?: string;
+  user_phone?: string;
+  user_preferences?: { id: number; name: string; category: string }[];
   stars: number;
   comment: string;
   manager_response?: string | null;

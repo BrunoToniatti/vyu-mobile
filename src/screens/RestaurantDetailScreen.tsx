@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Alert, Linking, Platform, TextInput, Modal, KeyboardAvoidingView, Image,
+  Alert, Linking, Platform, TextInput, Modal, KeyboardAvoidingView, Image, SafeAreaView,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -42,6 +42,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const [selectedStars, setSelectedStars] = useState(0);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [profileReview, setProfileReview] = useState<Review | null>(null);
 
   const hasCoords = restaurant.latitude && restaurant.longitude;
 
@@ -233,7 +234,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               return (
                 <View key={r.id} style={styles.reviewCard}>
                   <View style={styles.reviewTop}>
-                    <View style={styles.reviewUserRow}>
+                    <TouchableOpacity style={styles.reviewUserRow} onPress={() => setProfileReview(r)} activeOpacity={0.75}>
                       {r.user_photo_url ? (
                         <Image source={{ uri: r.user_photo_url }} style={styles.reviewAvatar} />
                       ) : (
@@ -242,10 +243,10 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                         </View>
                       )}
                       <View>
-                        <Text style={styles.reviewUser}>{r.user_name}</Text>
+                        <Text style={[styles.reviewUser, styles.reviewUserLink]}>{r.user_name}</Text>
                         <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                     <StarRow value={r.stars} size={14} />
                   </View>
                   {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
@@ -261,6 +262,87 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
           )}
         </View>
       </ScrollView>
+
+      {/* User Profile Modal */}
+      <Modal visible={!!profileReview} animationType="slide" transparent onRequestClose={() => setProfileReview(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setProfileReview(null)}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={styles.profileSheet}>
+              <View style={styles.modalHandle} />
+              {profileReview && (() => {
+                const pr = profileReview;
+                const pInitials = pr.user_name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
+                const grouped = (pr.user_preferences ?? []).reduce((acc: Record<string, string[]>, p) => {
+                  const cat = p.category || 'Outros';
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(p.name);
+                  return acc;
+                }, {});
+                return (
+                  <>
+                    <View style={styles.profileHero}>
+                      {pr.user_photo_url ? (
+                        <Image source={{ uri: pr.user_photo_url }} style={styles.profilePhoto} />
+                      ) : (
+                        <View style={styles.profileAvatar}>
+                          <Text style={styles.profileAvatarText}>{pInitials}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.profileName}>{pr.user_name}</Text>
+                        <Text style={styles.profileLabel}>Cliente</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.profileDivider} />
+
+                    <View style={styles.profileSection}>
+                      <Text style={styles.profileSectionTitle}>Dados pessoais</Text>
+                      {!!pr.user_email && (
+                        <View style={styles.profileInfoRow}>
+                          <MaterialIcons name="email" size={16} color={ACCENT} />
+                          <Text style={styles.profileInfoText}>{pr.user_email}</Text>
+                        </View>
+                      )}
+                      {!!pr.user_phone && (
+                        <View style={styles.profileInfoRow}>
+                          <MaterialIcons name="phone" size={16} color={ACCENT} />
+                          <Text style={styles.profileInfoText}>{pr.user_phone}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {Object.keys(grouped).length > 0 && (
+                      <>
+                        <View style={styles.profileDivider} />
+                        <View style={styles.profileSection}>
+                          <Text style={styles.profileSectionTitle}>Preferências alimentares</Text>
+                          {Object.entries(grouped).map(([cat, items]) => (
+                            <View key={cat} style={{ marginBottom: 10 }}>
+                              <Text style={styles.profileCatName}>{cat}</Text>
+                              <View style={styles.profileChips}>
+                                {(items as string[]).map((item) => (
+                                  <View key={item} style={styles.profileChip}>
+                                    <Text style={styles.profileChipText}>{item}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    )}
+
+                    <TouchableOpacity style={styles.profileCloseBtn} onPress={() => setProfileReview(null)} activeOpacity={0.8}>
+                      <Text style={styles.profileCloseBtnText}>Fechar</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Review Modal */}
       <Modal visible={showReviewModal} animationType="slide" transparent>
@@ -413,7 +495,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reviewTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  reviewUserLink: { textDecorationLine: 'underline', textDecorationColor: PRIMARY },
   reviewAvatar: { width: 38, height: 38, borderRadius: 19 },
   reviewAvatarFallback: {
     width: 38, height: 38, borderRadius: 19,
@@ -462,4 +545,43 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { backgroundColor: '#c5cae9' },
   submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  // Profile modal
+  profileSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 32,
+    maxHeight: '85%',
+  },
+  profileHero: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 20,
+    backgroundColor: PRIMARY,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+  },
+  profilePhoto: { width: 56, height: 56, borderRadius: 16, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  profileAvatar: {
+    width: 56, height: 56, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  profileAvatarText: { color: '#fff', fontWeight: '800', fontSize: 20 },
+  profileName: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  profileLabel: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  profileDivider: { height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 20 },
+  profileSection: { padding: 18, gap: 10 },
+  profileSectionTitle: { fontSize: 11, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  profileInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  profileInfoText: { fontSize: 14, color: '#374151', flex: 1 },
+  profileCatName: { fontSize: 12, fontWeight: '700', color: '#6b7280', marginBottom: 6 },
+  profileChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  profileChip: { backgroundColor: '#e8eaf6', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  profileChipText: { fontSize: 12, color: ACCENT, fontWeight: '600' },
+  profileCloseBtn: {
+    marginHorizontal: 20, marginTop: 8,
+    backgroundColor: PRIMARY, borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  profileCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
