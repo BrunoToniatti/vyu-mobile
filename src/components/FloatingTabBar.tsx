@@ -51,11 +51,8 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
 
           return (
             <TouchableOpacity key={route.key} style={styles.tab} onPress={onPress} activeOpacity={0.7}>
-              <MaterialIcons
-                name={ICONS[route.name]}
-                size={24}
-                color={focused ? TEAL : INACTIVE}
-              />
+              {focused && <View style={styles.activeIndicator} />}
+              <MaterialIcons name={ICONS[route.name]} size={24} color={focused ? TEAL : INACTIVE} />
               <Text style={[styles.label, focused && styles.labelFocused]}>{LABELS[route.name]}</Text>
             </TouchableOpacity>
           );
@@ -97,6 +94,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: 2,
+  },
+  activeIndicator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: TEAL,
+    marginBottom: 4,
   },
   label: {
     fontSize: 10,
