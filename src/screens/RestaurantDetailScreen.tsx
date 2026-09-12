@@ -188,12 +188,22 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             )}
           </View>
 
-          {hasCoords && (
-            <TouchableOpacity style={styles.directionsFullBtn} onPress={showDirectionsAlert} activeOpacity={0.8}>
-              <MaterialIcons name="directions" size={18} color="#fff" />
-              <Text style={styles.directionsFullText}>Como chegar</Text>
+          <View style={styles.actionButtons}>
+            {hasCoords && (
+              <TouchableOpacity style={styles.directionsFullBtn} onPress={showDirectionsAlert} activeOpacity={0.8}>
+                <MaterialIcons name="directions" size={18} color="#fff" />
+                <Text style={styles.directionsFullText}>Como chegar</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.chatBtn}
+              onPress={() => navigation.navigate('Chat', { restaurant })}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="chat" size={18} color="#fff" />
+              <Text style={styles.chatBtnText}>Entrar no chat</Text>
             </TouchableOpacity>
-          )}
+          </View>
         </View>
 
         {/* Mini Map */}
@@ -449,12 +459,19 @@ const styles = StyleSheet.create({
   infoText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 20 },
   link: { color: ACCENT, textDecorationLine: 'underline' },
 
+  actionButtons: { gap: 10, marginTop: 4 },
   directionsFullBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: ACCENT,
     paddingVertical: 12, borderRadius: 12,
   },
   directionsFullText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  chatBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#2e7d32',
+    paddingVertical: 12, borderRadius: 12,
+  },
+  chatBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
   mapCard: {
     height: 200, borderRadius: 16, overflow: 'hidden',

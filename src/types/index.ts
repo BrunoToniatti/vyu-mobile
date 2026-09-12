@@ -31,6 +31,15 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+export interface ChatMessage {
+  id: number;
+  sender_type: 'app_user' | 'restaurant';
+  sender_name: string;
+  sender_photo?: string | null;
+  text: string;
+  created_at: string;
+}
+
 export interface Review {
   id: number;
   user_id: number;
