@@ -16,6 +16,7 @@ export interface Restaurant {
   site?: string;
   instagram?: string;
   path_logo?: string;
+  photo_url?: string | null;
   category_items?: number[];
   latitude?: number | null;
   average_rating?: number | null;

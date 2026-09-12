@@ -10,6 +10,7 @@ import {
   RefreshControl,
   StatusBar,
   Platform,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -108,11 +109,18 @@ export default function RestaurantsScreen({ navigation }: Props) {
         onPress={() => navigation.navigate('RestaurantDetail', { restaurant: item })}
         activeOpacity={0.85}
       >
+        {/* Foto do restaurante */}
+        {!!item.photo_url && (
+          <Image source={{ uri: item.photo_url }} style={styles.cardPhoto} resizeMode="cover" />
+        )}
+
         {/* Header do card */}
         <View style={styles.cardTop}>
-          <View style={[styles.avatar, isMatch && styles.avatarMatch]}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          {!item.photo_url && (
+            <View style={[styles.avatar, isMatch && styles.avatarMatch]}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+          )}
           <View style={styles.cardInfo}>
             <Text style={styles.restaurantName} numberOfLines={1}>{item.name}</Text>
             <View style={styles.addressRow}>
@@ -270,6 +278,7 @@ const styles = StyleSheet.create({
     borderColor: ACCENT,
   },
 
+  cardPhoto: { width: '100%', height: 140, borderRadius: 0 },
   cardTop: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   avatar: {
     width: 48, height: 48, borderRadius: 14,

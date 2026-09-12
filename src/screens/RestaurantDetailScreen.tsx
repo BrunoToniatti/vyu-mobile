@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Alert, Linking, Platform, TextInput, Modal, KeyboardAvoidingView,
+  Alert, Linking, Platform, TextInput, Modal, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -140,12 +140,17 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {/* Info Card */}
         <View style={styles.infoCard}>
+          {restaurant.photo_url ? (
+            <Image source={{ uri: restaurant.photo_url }} style={styles.restaurantPhoto} resizeMode="cover" />
+          ) : null}
           <View style={styles.nameRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {restaurant.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
-              </Text>
-            </View>
+            {!restaurant.photo_url && (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {restaurant.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.restaurantName}>{restaurant.name}</Text>
               {averageRating !== null && (
@@ -327,6 +332,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+  },
+  restaurantPhoto: {
+    width: '100%', height: 180, borderRadius: 12,
+    marginBottom: 14,
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   avatar: {
