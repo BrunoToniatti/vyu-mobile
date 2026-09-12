@@ -36,3 +36,28 @@ export async function isAuthenticated(): Promise<boolean> {
 export async function logout(): Promise<void> {
   await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
 }
+
+export async function uploadUserPhoto(uri: string): Promise<UserApp> {
+  const filename = uri.split('/').pop() ?? 'photo.jpg';
+  const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+  const type = mimeMap[ext] ?? 'image/jpeg';
+
+  const formData = new FormData();
+  formData.append('photo', { uri, name: filename, type } as any);
+
+  const res = await api.post('/users/me/photo/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+  const updatedUser: UserApp = res.data.data;
+  await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+  return updatedUser;
+}
+
+export async function removeUserPhoto(): Promise<UserApp> {
+  const res = await api.delete('/users/me/photo/');
+  const updatedUser: UserApp = res.data.data ?? (await getStoredUser());
+  await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+  return updatedUser;
+}

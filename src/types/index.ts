@@ -5,6 +5,7 @@ export interface UserApp {
   email: string;
   username: string;
   phone_number: string;
+  photo_url?: string | null;
 }
 
 export interface Restaurant {

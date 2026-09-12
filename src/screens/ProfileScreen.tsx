@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, StatusBar, Platform, TextInput,
+  ActivityIndicator, Alert, StatusBar, Platform, TextInput, Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { MaterialIcons } from '@expo/vector-icons';
 import { MainTabParamList } from '../../App';
-import { getStoredUser, logout } from '../services/auth';
+import { getStoredUser, logout, uploadUserPhoto, removeUserPhoto } from '../services/auth';
 import { getAllCategories, getUserPreferences, saveUserPreferences, Category } from '../services/category';
 import { UserApp } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +21,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -59,12 +62,79 @@ export default function ProfileScreen({ navigation }: Props) {
     });
   }
 
+  async function handlePickPhoto() {
+    Alert.alert('Foto de perfil', 'Escolha uma opção', [
+      {
+        text: 'Câmera',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert('Permissão negada', 'Habilite o acesso à câmera nas configurações.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) await doUpload(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Galeria',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert('Permissão negada', 'Habilite o acesso à galeria nas configurações.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) await doUpload(result.assets[0].uri);
+        },
+      },
+      ...(user?.photo_url ? [{
+        text: 'Remover foto',
+        style: 'destructive' as const,
+        onPress: async () => {
+          setUploadingPhoto(true);
+          try {
+            const updated = await removeUserPhoto();
+            setUser(updated);
+          } catch {
+            Alert.alert('Erro', 'Não foi possível remover a foto.');
+          } finally {
+            setUploadingPhoto(false);
+          }
+        },
+      }] : []),
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
+  async function doUpload(uri: string) {
+    setUploadingPhoto(true);
+    try {
+      const updated = await uploadUserPhoto(uri);
+      setUser(updated);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível enviar a foto.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
       await saveUserPreferences(Array.from(selected));
       if (editMode && user) {
-        const res = await api.patch('/users/me/', {
+        await api.patch('/users/me/', {
           first_name: firstName,
           last_name: lastName,
           phone_number: phone,
@@ -107,13 +177,27 @@ export default function ProfileScreen({ navigation }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Avatar */}
+        {/* Avatar com upload */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.85} style={styles.avatarWrapper}>
+            {uploadingPhoto ? (
+              <View style={styles.avatarLoading}>
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
+            ) : user?.photo_url ? (
+              <Image source={{ uri: user.photo_url }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            )}
+            <View style={styles.cameraBtn}>
+              <MaterialIcons name="camera-alt" size={14} color="#fff" />
+            </View>
+          </TouchableOpacity>
           <Text style={styles.userName}>{user?.first_name} {user?.last_name}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
+          <Text style={styles.photoHint}>Toque na foto para alterar</Text>
         </View>
 
         {/* Info card */}
@@ -219,16 +303,33 @@ const styles = StyleSheet.create({
 
   scroll: { padding: 20, gap: 16, paddingBottom: 40 },
 
-  avatarSection: { alignItems: 'center', paddingVertical: 8 },
+  avatarSection: { alignItems: 'center', paddingVertical: 8, gap: 4 },
+  avatarWrapper: { position: 'relative', marginBottom: 8 },
   avatar: {
-    width: 80, height: 80, borderRadius: 24,
+    width: 88, height: 88, borderRadius: 28,
     backgroundColor: '#3f51b5',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12,
   },
-  avatarText: { color: '#fff', fontWeight: '800', fontSize: 28 },
-  userName: { fontSize: 20, fontWeight: '700', color: '#1a237e' },
-  userEmail: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  avatarImage: {
+    width: 88, height: 88, borderRadius: 28,
+    borderWidth: 3, borderColor: '#fff',
+  },
+  avatarLoading: {
+    width: 88, height: 88, borderRadius: 28,
+    backgroundColor: '#3f51b5',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { color: '#fff', fontWeight: '800', fontSize: 30 },
+  cameraBtn: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#1a237e',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+  },
+  userName: { fontSize: 20, fontWeight: '700', color: '#1a237e', marginTop: 4 },
+  userEmail: { fontSize: 13, color: '#6b7280' },
+  photoHint: { fontSize: 11, color: '#9ca3af', marginTop: 2 },
 
   card: {
     backgroundColor: '#fff',
