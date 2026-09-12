@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform,
 } from 'react-native';
@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import { WebView } from 'react-native-webview';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { getPublicRestaurants } from '../services/restaurant';
 import { Restaurant } from '../types';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -22,13 +23,102 @@ type Props = {
   >;
 };
 
+function buildMapHtml(
+  lat: number,
+  lng: number,
+  restaurantsJson: string,
+): string {
+  // Leaflet CSS inlined to avoid CDN dependency for styles
+  // JS still from CDN but guarded by window.onload to prevent race condition
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html,body,#map { width:100%; height:100%; background:#e8eaf6; }
+    .popup-content { font-family:-apple-system,sans-serif; min-width:180px; }
+    .popup-name { font-size:14px; font-weight:700; color:#1a237e; margin-bottom:6px; }
+    .popup-row { display:flex; align-items:flex-start; gap:4px; margin-bottom:4px; font-size:12px; color:#555; }
+    .popup-icon { font-size:13px; flex-shrink:0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    // Guard: retry until Leaflet is available (handles slow CDN)
+    function initMap() {
+      if (typeof L === 'undefined') {
+        setTimeout(initMap, 100);
+        return;
+      }
+
+      var map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 14);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(map);
+
+      var userIcon = L.divIcon({
+        className: '',
+        html: '<div style="width:18px;height:18px;border-radius:50%;background:#1a237e;border:3px solid #fff;box-shadow:0 2px 8px rgba(26,35,126,0.5);"></div>',
+        iconSize: [18,18], iconAnchor: [9,9],
+      });
+      L.marker([${lat}, ${lng}], { icon: userIcon })
+        .addTo(map)
+        .bindPopup('<b>Você está aqui</b>');
+
+      var restaurantIcon = L.divIcon({
+        className: '',
+        html: '<div style="width:32px;height:32px;border-radius:50%;background:#e53935;border:3px solid #fff;box-shadow:0 2px 8px rgba(229,57,53,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">🍽️</div>',
+        iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-18],
+      });
+
+      var restaurants = ${restaurantsJson};
+      restaurants.forEach(function(r) {
+        var instagramRow = r.instagram
+          ? '<div class="popup-row"><span class="popup-icon">📸</span><span>' + r.instagram + '</span></div>'
+          : '';
+        var popup = '<div class="popup-content">'
+          + '<div class="popup-name">' + r.name + '</div>'
+          + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
+          + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
+          + instagramRow
+          + '<button onclick="window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:\\'openDetail\\',id:'+r.id+'\\'}))" '
+          + 'style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">'
+          + 'Saiba mais</button>'
+          + '</div>';
+        L.marker([r.lat, r.lng], { icon: restaurantIcon })
+          .addTo(map)
+          .bindPopup(popup, { maxWidth: 240 });
+      });
+
+      // Fix blank map on resize/render
+      setTimeout(function() { map.invalidateSize(); }, 300);
+    }
+
+    // Start after DOM + scripts ready
+    if (document.readyState === 'complete') {
+      initMap();
+    } else {
+      window.addEventListener('load', initMap);
+    }
+  </script>
+</body>
+</html>`;
+}
+
 export default function MapScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<any>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const restaurantsRef = React.useRef<Restaurant[]>([]);
+  const restaurantsRef = useRef<Restaurant[]>([]);
 
   async function requestLocation() {
     setStatus('loading');
@@ -41,12 +131,14 @@ export default function MapScreen({ navigation }: Props) {
 
   useEffect(() => { requestLocation(); }, []);
 
-  useEffect(() => {
-    getPublicRestaurants().then((data) => {
-      setRestaurants(data);
-      restaurantsRef.current = data;
-    }).catch(() => {});
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getPublicRestaurants().then((data) => {
+        setRestaurants(data);
+        restaurantsRef.current = data;
+      }).catch(() => {});
+    }, [])
+  );
 
   function openSettings() {
     if (Platform.OS === 'ios') Linking.openURL('app-settings:');
@@ -67,76 +159,10 @@ export default function MapScreen({ navigation }: Props) {
     }))
   );
 
-  const mapHtml = coords ? `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #map { width: 100%; height: 100%; }
+  // key forces WebView to fully remount when location or restaurants change
+  const mapKey = coords ? `${coords.lat.toFixed(5)}-${coords.lng.toFixed(5)}-${restaurantsWithCoords.length}` : 'no-coords';
 
-    .popup-content { font-family: -apple-system, sans-serif; min-width: 180px; }
-    .popup-name { font-size: 14px; font-weight: 700; color: #1a237e; margin-bottom: 6px; }
-    .popup-row { display: flex; align-items: flex-start; gap: 4px; margin-bottom: 4px; font-size: 12px; color: #555; }
-    .popup-icon { font-size: 13px; flex-shrink: 0; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    var map = L.map('map', { zoomControl: true }).setView([${coords.lat}, ${coords.lng}], 14);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19,
-    }).addTo(map);
-
-    // Marcador do usuário
-    var userIcon = L.divIcon({
-      className: '',
-      html: '<div style="width:18px;height:18px;border-radius:50%;background:#1a237e;border:3px solid #fff;box-shadow:0 2px 8px rgba(26,35,126,0.5);"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
-    L.marker([${coords.lat}, ${coords.lng}], { icon: userIcon })
-      .addTo(map)
-      .bindPopup('<b>Você está aqui</b>');
-
-    // Marcadores dos restaurantes
-    var restaurantIcon = L.divIcon({
-      className: '',
-      html: '<div style="width:32px;height:32px;border-radius:50%;background:#e53935;border:3px solid #fff;box-shadow:0 2px 8px rgba(229,57,53,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">🍽️</div>',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -18],
-    });
-
-    var restaurants = ${restaurantsJson};
-
-    restaurants.forEach(function(r) {
-      var instagramRow = r.instagram
-        ? '<div class="popup-row"><span class="popup-icon">📸</span><span>' + r.instagram + '</span></div>'
-        : '';
-      var popup = '<div class="popup-content">'
-        + '<div class="popup-name">' + r.name + '</div>'
-        + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
-        + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
-        + instagramRow
-        + '<button class="saiba-mais-btn" onclick="window.ReactNativeWebView.postMessage(JSON.stringify({type:\'openDetail\',id:' + r.id + '}))" style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Saiba mais</button>'
-        + '</div>';
-
-      L.marker([r.lat, r.lng], { icon: restaurantIcon })
-        .addTo(map)
-        .bindPopup(popup, { maxWidth: 240 });
-    });
-  </script>
-</body>
-</html>
-` : '';
+  const mapHtml = coords ? buildMapHtml(coords.lat, coords.lng, restaurantsJson) : '';
 
   if (status === 'loading') {
     return (
@@ -171,12 +197,16 @@ export default function MapScreen({ navigation }: Props) {
   return (
     <View style={styles.mapContainer}>
       <WebView
+        key={mapKey}
         ref={webViewRef}
         source={{ html: mapHtml }}
         style={styles.map}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
+        allowFileAccess
+        allowUniversalAccessFromFileURLs
+        mixedContentMode="always"
         startInLoadingState
         onMessage={(event) => {
           try {
