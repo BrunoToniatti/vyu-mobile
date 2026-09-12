@@ -78,6 +78,18 @@ function buildMapHtml(
         iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-18],
       });
 
+      // Event delegation: handles clicks on .saiba-mais-btn inside any popup
+      document.addEventListener('click', function(e) {
+        var btn = e.target && (e.target.closest ? e.target.closest('.saiba-mais-btn') : null);
+        if (!btn && e.target && e.target.classList && e.target.classList.contains('saiba-mais-btn')) btn = e.target;
+        if (btn) {
+          var id = parseInt(btn.getAttribute('data-id'), 10);
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'openDetail', id: id }));
+          }
+        }
+      });
+
       var restaurants = ${restaurantsJson};
       restaurants.forEach(function(r) {
         var instagramRow = r.instagram
@@ -88,7 +100,7 @@ function buildMapHtml(
           + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
           + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
           + instagramRow
-          + '<button onclick="window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:\\'openDetail\\',id:'+r.id+'\\'}))" '
+          + '<button class="saiba-mais-btn" data-id="' + r.id + '" '
           + 'style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">'
           + 'Saiba mais</button>'
           + '</div>';
