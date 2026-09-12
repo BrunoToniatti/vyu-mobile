@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -12,8 +12,10 @@ import PreferencesScreen from './src/screens/PreferencesScreen';
 import RestaurantsScreen from './src/screens/RestaurantsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import MapScreen from './src/screens/MapScreen';
+import RestaurantDetailScreen from './src/screens/RestaurantDetailScreen';
 import FloatingTabBar from './src/components/FloatingTabBar';
 import { isAuthenticated } from './src/services/auth';
+import { Restaurant } from './src/types';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -21,6 +23,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Preferences: undefined;
   Main: undefined;
+  RestaurantDetail: { restaurant: Restaurant };
 };
 
 export type MainTabParamList = {
@@ -74,12 +77,27 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>
-        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+        <Stack.Navigator
+          initialRouteName={initialRoute}
+          screenOptions={{
+            headerShown: false,
+            ...TransitionPresets.SlideFromRightIOS,
+          }}
+        >
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Preferences" component={PreferencesScreen} />
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="Main"
+            component={MainTabs}
+            options={{ ...TransitionPresets.FadeFromBottomAndroid }}
+          />
+          <Stack.Screen
+            name="RestaurantDetail"
+            component={RestaurantDetailScreen}
+            options={{ ...TransitionPresets.SlideFromRightIOS }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

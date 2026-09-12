@@ -13,6 +13,9 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../App';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MainTabParamList } from '../../App';
 import { getPublicRestaurants } from '../services/restaurant';
@@ -20,7 +23,12 @@ import { getStoredUser, logout } from '../services/auth';
 import { getAllCategories, getUserPreferences, CategoryItem, Category } from '../services/category';
 import { Restaurant, UserApp } from '../types';
 
-type Props = { navigation: BottomTabNavigationProp<MainTabParamList, 'Restaurants'> };
+type Props = {
+  navigation: CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList, 'Restaurants'>,
+    StackNavigationProp<RootStackParamList>
+  >;
+};
 
 export default function RestaurantsScreen({ navigation }: Props) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -95,7 +103,11 @@ export default function RestaurantsScreen({ navigation }: Props) {
     const isMatch = preferredIds.size > 0 && itemIds.some((id) => preferredIds.has(id));
 
     return (
-      <View style={[styles.card, isMatch && styles.cardHighlight]}>
+      <TouchableOpacity
+        style={[styles.card, isMatch && styles.cardHighlight]}
+        onPress={() => navigation.navigate('RestaurantDetail', { restaurant: item })}
+        activeOpacity={0.85}
+      >
         {/* Header do card */}
         <View style={styles.cardTop}>
           <View style={[styles.avatar, isMatch && styles.avatarMatch]}>
@@ -152,7 +164,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
             </View>
           </>
         )}
-      </View>
+      </TouchableOpacity>
     );
   }
 

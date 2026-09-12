@@ -8,15 +8,27 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPublicRestaurants } from '../services/restaurant';
 import { Restaurant } from '../types';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { RootStackParamList, MainTabParamList } from '../../App';
 
 type Status = 'loading' | 'denied' | 'ready';
 
-export default function MapScreen() {
+type Props = {
+  navigation: CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList, 'Map'>,
+    StackNavigationProp<RootStackParamList>
+  >;
+};
+
+export default function MapScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<any>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const restaurantsRef = React.useRef<Restaurant[]>([]);
 
   async function requestLocation() {
     setStatus('loading');
@@ -30,7 +42,10 @@ export default function MapScreen() {
   useEffect(() => { requestLocation(); }, []);
 
   useEffect(() => {
-    getPublicRestaurants().then(setRestaurants).catch(() => {});
+    getPublicRestaurants().then((data) => {
+      setRestaurants(data);
+      restaurantsRef.current = data;
+    }).catch(() => {});
   }, []);
 
   function openSettings() {
@@ -111,6 +126,7 @@ export default function MapScreen() {
         + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
         + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
         + instagramRow
+        + '<button class="saiba-mais-btn" onclick="window.ReactNativeWebView.postMessage(JSON.stringify({type:\'openDetail\',id:' + r.id + '}))" style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Saiba mais</button>'
         + '</div>';
 
       L.marker([r.lat, r.lng], { icon: restaurantIcon })
@@ -162,6 +178,15 @@ export default function MapScreen() {
         javaScriptEnabled
         domStorageEnabled
         startInLoadingState
+        onMessage={(event) => {
+          try {
+            const msg = JSON.parse(event.nativeEvent.data);
+            if (msg.type === 'openDetail') {
+              const restaurant = restaurantsRef.current.find((r) => r.id === msg.id);
+              if (restaurant) navigation.navigate('RestaurantDetail', { restaurant });
+            }
+          } catch {}
+        }}
         renderLoading={() => (
           <View style={styles.center}>
             <ActivityIndicator size="large" color="#1a237e" />
