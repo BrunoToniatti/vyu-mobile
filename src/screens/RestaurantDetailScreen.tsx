@@ -228,22 +228,36 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               <Text style={styles.emptySubtext}>Seja o primeiro a avaliar!</Text>
             </View>
           ) : (
-            reviews.map((r) => (
-              <View key={r.id} style={styles.reviewCard}>
-                <View style={styles.reviewTop}>
-                  <Text style={styles.reviewUser}>{r.user_name}</Text>
-                  <StarRow value={r.stars} size={14} />
-                </View>
-                {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
-                <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</Text>
-                {!!r.manager_response && (
-                  <View style={styles.managerResponse}>
-                    <Text style={styles.managerResponseLabel}>Resposta do estabelecimento:</Text>
-                    <Text style={styles.managerResponseText}>{r.manager_response}</Text>
+            reviews.map((r) => {
+              const initials = r.user_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+              return (
+                <View key={r.id} style={styles.reviewCard}>
+                  <View style={styles.reviewTop}>
+                    <View style={styles.reviewUserRow}>
+                      {r.user_photo_url ? (
+                        <Image source={{ uri: r.user_photo_url }} style={styles.reviewAvatar} />
+                      ) : (
+                        <View style={styles.reviewAvatarFallback}>
+                          <Text style={styles.reviewAvatarText}>{initials}</Text>
+                        </View>
+                      )}
+                      <View>
+                        <Text style={styles.reviewUser}>{r.user_name}</Text>
+                        <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</Text>
+                      </View>
+                    </View>
+                    <StarRow value={r.stars} size={14} />
                   </View>
-                )}
-              </View>
-            ))
+                  {!!r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
+                  {!!r.manager_response && (
+                    <View style={styles.managerResponse}>
+                      <Text style={styles.managerResponseLabel}>Resposta do estabelecimento:</Text>
+                      <Text style={styles.managerResponseText}>{r.manager_response}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -399,6 +413,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reviewTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reviewAvatar: { width: 38, height: 38, borderRadius: 19 },
+  reviewAvatarFallback: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   reviewUser: { fontSize: 14, fontWeight: '700', color: PRIMARY },
   reviewComment: { fontSize: 14, color: '#374151', lineHeight: 20 },
   reviewDate: { fontSize: 11, color: '#9ca3af' },

@@ -34,6 +34,7 @@ export interface ApiResponse<T> {
 export interface Review {
   id: number;
   user_name: string;
+  user_photo_url?: string | null;
   stars: number;
   comment: string;
   manager_response?: string | null;
