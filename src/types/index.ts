@@ -17,6 +17,8 @@ export interface Restaurant {
   instagram?: string;
   path_logo?: string;
   category_items?: number[];
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface ApiResponse<T> {
