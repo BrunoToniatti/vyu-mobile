@@ -1,24 +1,187 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform,
+} from 'react-native';
+import * as Location from 'expo-location';
+import { WebView } from 'react-native-webview';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type Status = 'loading' | 'denied' | 'ready';
 
 export default function MapScreen() {
+  const insets = useSafeAreaInsets();
+  const [status, setStatus] = useState<Status>('loading');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  async function requestLocation() {
+    setStatus('loading');
+    const { status: perm } = await Location.requestForegroundPermissionsAsync();
+    if (perm !== 'granted') {
+      setStatus('denied');
+      return;
+    }
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    setCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+    setStatus('ready');
+  }
+
+  useEffect(() => { requestLocation(); }, []);
+
+  function openSettings() {
+    if (Platform.OS === 'ios') {
+      Linking.openURL('app-settings:');
+    } else {
+      Linking.openSettings();
+    }
+  }
+
+  const mapHtml = coords ? `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', { zoomControl: true }).setView([${coords.lat}, ${coords.lng}], 16);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    var userIcon = L.divIcon({
+      className: '',
+      html: '<div style="width:18px;height:18px;border-radius:50%;background:#1a237e;border:3px solid #fff;box-shadow:0 2px 8px rgba(26,35,126,0.5);"></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+
+    L.marker([${coords.lat}, ${coords.lng}], { icon: userIcon })
+      .addTo(map)
+      .bindPopup('<b>Você está aqui</b>')
+      .openPopup();
+  </script>
+</body>
+</html>
+` : '';
+
+  if (status === 'loading') {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#1a237e" />
+        <Text style={styles.loadingText}>Obtendo localização...</Text>
+      </View>
+    );
+  }
+
+  if (status === 'denied') {
+    return (
+      <View style={[styles.blockedContainer, { paddingTop: insets.top + 20 }]}>
+        <View style={styles.iconCircle}>
+          <MaterialIcons name="location-off" size={48} color="#9ca3af" />
+        </View>
+        <Text style={styles.blockedTitle}>Localização bloqueada</Text>
+        <Text style={styles.blockedText}>
+          Precisamos da sua localização para mostrar o mapa e os restaurantes próximos a você.
+        </Text>
+
+        <TouchableOpacity style={styles.primaryBtn} onPress={requestLocation} activeOpacity={0.8}>
+          <MaterialIcons name="my-location" size={18} color="#fff" />
+          <Text style={styles.primaryBtnText}>Permitir localização</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.secondaryBtn} onPress={openSettings} activeOpacity={0.8}>
+          <Text style={styles.secondaryBtnText}>Abrir configurações</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.icon}>🗺️</Text>
-      <Text style={styles.title}>Mapa</Text>
-      <Text style={styles.subtitle}>Em breve</Text>
+    <View style={styles.mapContainer}>
+      <WebView
+        source={{ html: mapHtml }}
+        style={styles.map}
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#1a237e" />
+          </View>
+        )}
+      />
+
+      {/* Badge "Você está aqui" */}
+      <View style={[styles.myLocationBadge, { top: insets.top + 12 }]}>
+        <MaterialIcons name="my-location" size={14} color="#1a237e" />
+        <Text style={styles.myLocationText}>Você está aqui</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  center: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4f5fb',
+  },
+  loadingText: { marginTop: 12, fontSize: 14, color: '#6b7280' },
+
+  blockedContainer: {
     flex: 1,
+    backgroundColor: '#f4f5fb',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 32,
+    paddingBottom: 80,
   },
-  icon: { fontSize: 64, marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: '#1a237e' },
-  subtitle: { fontSize: 14, color: '#9e9e9e', marginTop: 4 },
+  iconCircle: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+  },
+  blockedTitle: {
+    fontSize: 22, fontWeight: '700', color: '#1a237e', marginBottom: 12, textAlign: 'center',
+  },
+  blockedText: {
+    fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 22, marginBottom: 32,
+  },
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#1a237e',
+    paddingVertical: 14, paddingHorizontal: 28,
+    borderRadius: 14, marginBottom: 12, width: '100%', justifyContent: 'center',
+  },
+  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  secondaryBtn: {
+    paddingVertical: 12, paddingHorizontal: 28,
+    borderRadius: 14, borderWidth: 1.5, borderColor: '#d1d5db',
+    width: '100%', alignItems: 'center',
+  },
+  secondaryBtnText: { color: '#6b7280', fontWeight: '600', fontSize: 14 },
+
+  mapContainer: { flex: 1 },
+  map: { flex: 1 },
+  myLocationBadge: {
+    position: 'absolute', left: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#fff',
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 4, elevation: 4,
+  },
+  myLocationText: { fontSize: 12, fontWeight: '600', color: '#1a237e' },
 });
