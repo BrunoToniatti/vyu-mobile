@@ -69,22 +69,10 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   </script>
 </body></html>` : '';
 
-  const streetViewHtml = hasCoords ? `
-<!DOCTYPE html><html><head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    html,body,iframe{width:100%;height:100%;border:0;display:block}
-  </style>
-</head><body>
-  <iframe
-    src="https://www.google.com/maps?q=${restaurant.latitude},${restaurant.longitude}&layer=c&cbll=${restaurant.latitude},${restaurant.longitude}&cbp=11,0,0,0,0&output=embed"
-    allowfullscreen
-    loading="lazy"
-    referrerpolicy="no-referrer-when-downgrade">
-  </iframe>
-</body></html>` : '';
+  // URL direta que abre o Google Maps já em modo Street View
+  const streetViewUri = hasCoords
+    ? `https://www.google.com/maps/@${restaurant.latitude},${restaurant.longitude},3a,75y,0h,90t/data=!3m4!1e1!3m2!1s!2e0`
+    : null;
 
   useEffect(() => {
     getRestaurantReviews(restaurant.id)
@@ -259,16 +247,14 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                 color="#6b7280"
               />
             </TouchableOpacity>
-            {showStreetView && (
+            {showStreetView && streetViewUri && (
               <View style={styles.streetViewContainer}>
                 <WebView
-                  source={{ html: streetViewHtml }}
+                  source={{ uri: streetViewUri }}
                   style={styles.streetViewWebView}
-                  originWhitelist={['*']}
                   javaScriptEnabled
                   domStorageEnabled
-                  allowsInlineMediaPlayback
-                  mediaPlaybackRequiresUserAction={false}
+                  userAgent="Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
                 />
               </View>
             )}
