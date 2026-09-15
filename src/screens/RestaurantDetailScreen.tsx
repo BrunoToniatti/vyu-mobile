@@ -43,6 +43,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [profileReview, setProfileReview] = useState<Review | null>(null);
+  const [showStreetView, setShowStreetView] = useState(false);
 
   const hasCoords = restaurant.latitude && restaurant.longitude;
 
@@ -66,6 +67,23 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
     });
     L.marker([${restaurant.latitude},${restaurant.longitude}],{icon}).addTo(map).bindPopup('${restaurant.name.replace(/'/g, "\\'")}').openPopup();
   </script>
+</body></html>` : '';
+
+  const streetViewHtml = hasCoords ? `
+<!DOCTYPE html><html><head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body,iframe{width:100%;height:100%;border:0;display:block}
+  </style>
+</head><body>
+  <iframe
+    src="https://www.google.com/maps?q=${restaurant.latitude},${restaurant.longitude}&layer=c&cbll=${restaurant.latitude},${restaurant.longitude}&cbp=11,0,0,0,0&output=embed"
+    allowfullscreen
+    loading="lazy"
+    referrerpolicy="no-referrer-when-downgrade">
+  </iframe>
 </body></html>` : '';
 
   useEffect(() => {
@@ -217,6 +235,43 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               scrollEnabled={false}
               pointerEvents="none"
             />
+          </View>
+        )}
+
+        {/* Street View */}
+        {hasCoords && (
+          <View style={styles.streetViewCard}>
+            <TouchableOpacity
+              style={styles.streetViewToggle}
+              onPress={() => setShowStreetView(!showStreetView)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.streetViewToggleLeft}>
+                <MaterialIcons name="streetview" size={20} color="#1a237e" />
+                <View>
+                  <Text style={styles.streetViewTitle}>Ver ao redor</Text>
+                  <Text style={styles.streetViewSub}>Street View interativo</Text>
+                </View>
+              </View>
+              <MaterialIcons
+                name={showStreetView ? 'expand-less' : 'expand-more'}
+                size={24}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+            {showStreetView && (
+              <View style={styles.streetViewContainer}>
+                <WebView
+                  source={{ html: streetViewHtml }}
+                  style={styles.streetViewWebView}
+                  originWhitelist={['*']}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  allowsInlineMediaPlayback
+                  mediaPlaybackRequiresUserAction={false}
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -483,6 +538,46 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   miniMap: { flex: 1 },
+
+  streetViewCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  streetViewToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  streetViewToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  streetViewTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a237e',
+  },
+  streetViewSub: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 1,
+  },
+  streetViewContainer: {
+    height: 280,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  streetViewWebView: { flex: 1 },
 
   reviewsSection: { gap: 12 },
   reviewsHeader: {
