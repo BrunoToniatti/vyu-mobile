@@ -69,9 +69,10 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   </script>
 </body></html>` : '';
 
-  // URL direta que abre o Google Maps já em modo Street View
-  const streetViewUri = hasCoords
-    ? `https://www.google.com/maps/@${restaurant.latitude},${restaurant.longitude},3a,75y,0h,90t/data=!3m4!1e1!3m2!1s!2e0`
+  // Set your Google Maps Embed API key here (enable "Maps Embed API" in Google Cloud Console)
+  const GMAPS_EMBED_KEY = process.env.EXPO_PUBLIC_GMAPS_KEY ?? '';
+  const streetViewUrl = hasCoords && GMAPS_EMBED_KEY
+    ? `https://www.google.com/maps/embed/v1/streetview?key=${GMAPS_EMBED_KEY}&location=${restaurant.latitude},${restaurant.longitude}&fov=90&heading=0&pitch=0`
     : null;
 
   useEffect(() => {
@@ -247,15 +248,30 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                 color="#6b7280"
               />
             </TouchableOpacity>
-            {showStreetView && streetViewUri && (
+            {showStreetView && (
               <View style={styles.streetViewContainer}>
-                <WebView
-                  source={{ uri: streetViewUri }}
-                  style={styles.streetViewWebView}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  userAgent="Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
-                />
+                {streetViewUrl ? (
+                  <WebView
+                    source={{ uri: streetViewUrl }}
+                    style={styles.streetViewWebView}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    originWhitelist={['https://*']}
+                    onShouldStartLoadWithRequest={(req) => {
+                      if (req.url.startsWith('intent://') || req.url.startsWith('market://')) return false;
+                      return true;
+                    }}
+                  />
+                ) : (
+                  <View style={styles.streetViewNoKey}>
+                    <MaterialIcons name="streetview" size={48} color="#9ca3af" />
+                    <Text style={styles.streetViewNoKeyText}>
+                      {!GMAPS_EMBED_KEY
+                        ? 'Configure EXPO_PUBLIC_GMAPS_KEY para ver o Street View'
+                        : 'Street View não disponível neste endereço'}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -564,6 +580,19 @@ const styles = StyleSheet.create({
     borderTopColor: '#f0f0f0',
   },
   streetViewWebView: { flex: 1 },
+  streetViewNoKey: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#f9fafb',
+  },
+  streetViewNoKeyText: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
 
   reviewsSection: { gap: 12 },
   reviewsHeader: {
