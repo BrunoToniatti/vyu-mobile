@@ -27,33 +27,57 @@ type Props = {
 
 const POLL_INTERVAL = 4000;
 
+function useCountdown(targetIso: string | null) {
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
+
+  useEffect(() => {
+    if (!targetIso) return;
+    function tick() {
+      const diff = Math.max(0, Math.floor((new Date(targetIso!).getTime() - Date.now()) / 1000));
+      setSecondsLeft(diff);
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+
+  const h = Math.floor(secondsLeft / 3600);
+  const m = Math.floor((secondsLeft % 3600) / 60);
+  const s = secondsLeft % 60;
+  const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return { secondsLeft, label };
+}
+
 export default function ChatScreen({ navigation, route }: Props) {
   const { restaurant } = route.params;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [nextResetAt, setNextResetAt] = useState<string | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
   const flatListRef = useRef<FlatList>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { secondsLeft, label: countdownLabel } = useCountdown(nextResetAt);
 
+  // When countdown hits 0, trigger a full reload
+  const prevSecondsRef = useRef(secondsLeft);
   useEffect(() => {
-    AsyncStorage.getItem('user').then((raw) => {
-      if (raw) {
-        const u = JSON.parse(raw);
-        setCurrentUserId(u.id);
-      }
-    });
-  }, []);
+    if (prevSecondsRef.current > 0 && secondsLeft === 0 && !loading) {
+      lastIdRef.current = undefined;
+      loadInitial();
+    }
+    prevSecondsRef.current = secondsLeft;
+  }, [secondsLeft]);
 
   const loadInitial = useCallback(async () => {
     try {
-      const msgs = await getChatMessages(restaurant.id);
-      setMessages(msgs);
-      if (msgs.length > 0) {
-        lastIdRef.current = msgs[msgs.length - 1].id;
+      const res = await getChatMessages(restaurant.id);
+      setMessages(res.messages);
+      if (res.messages.length > 0) {
+        lastIdRef.current = res.messages[res.messages.length - 1].id;
       }
+      if (res.nextResetAt) setNextResetAt(res.nextResetAt);
     } catch (_) {
     } finally {
       setLoading(false);
@@ -62,10 +86,16 @@ export default function ChatScreen({ navigation, route }: Props) {
 
   const poll = useCallback(async () => {
     try {
-      const newMsgs = await getChatMessages(restaurant.id, lastIdRef.current);
-      if (newMsgs.length > 0) {
-        setMessages((prev) => [...prev, ...newMsgs]);
-        lastIdRef.current = newMsgs[newMsgs.length - 1].id;
+      const res = await getChatMessages(restaurant.id, lastIdRef.current);
+      if (res.nextResetAt) setNextResetAt(res.nextResetAt);
+      if (res.wasReset) {
+        setMessages(res.messages);
+        lastIdRef.current = res.messages.length > 0 ? res.messages[res.messages.length - 1].id : undefined;
+        return;
+      }
+      if (res.messages.length > 0) {
+        setMessages((prev) => [...prev, ...res.messages]);
+        lastIdRef.current = res.messages[res.messages.length - 1].id;
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (_) {}
@@ -103,7 +133,6 @@ export default function ChatScreen({ navigation, route }: Props) {
 
   function renderMessage({ item }: { item: ChatMessage }) {
     const isRestaurant = item.sender_type === 'restaurant';
-    const isMine = !isRestaurant && item.sender_name !== undefined;
 
     return (
       <View style={[styles.msgRow, isRestaurant && styles.msgRowRestaurant]}>
@@ -142,6 +171,8 @@ export default function ChatScreen({ navigation, route }: Props) {
     );
   }
 
+  const isNearReset = secondsLeft > 0 && secondsLeft <= 300; // last 5 min → warn
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -152,7 +183,24 @@ export default function ChatScreen({ navigation, route }: Props) {
           <Text style={styles.headerTitle} numberOfLines={1}>{restaurant.name}</Text>
           <Text style={styles.headerSub}>Chat público</Text>
         </View>
+        {nextResetAt && secondsLeft > 0 && (
+          <View style={[styles.timerBadge, isNearReset && styles.timerBadgeWarn]}>
+            <MaterialIcons name="timer" size={13} color={isNearReset ? '#fff' : 'rgba(255,255,255,0.85)'} />
+            <Text style={[styles.timerText, isNearReset && styles.timerTextWarn]}>{countdownLabel}</Text>
+          </View>
+        )}
       </View>
+
+      {nextResetAt && secondsLeft > 0 && (
+        <View style={[styles.resetBanner, isNearReset && styles.resetBannerWarn]}>
+          <MaterialIcons name="autorenew" size={14} color={isNearReset ? '#b71c1c' : '#5c6bc0'} />
+          <Text style={[styles.resetBannerText, isNearReset && styles.resetBannerTextWarn]}>
+            {isNearReset
+              ? `⚠️ Chat reseta em ${countdownLabel}`
+              : `Chat reseta em ${countdownLabel}`}
+          </Text>
+        </View>
+      )}
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -211,6 +259,7 @@ export default function ChatScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#1a237e' },
   flex: { flex: 1, backgroundColor: '#f5f5f5' },
+
   header: {
     backgroundColor: '#1a237e',
     flexDirection: 'row',
@@ -218,29 +267,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     paddingTop: Platform.OS === 'android' ? 40 : 10,
+    gap: 8,
   },
-  backBtn: { padding: 4, marginRight: 8 },
+  backBtn: { padding: 4 },
   headerInfo: { flex: 1 },
   headerTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   headerSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
+
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  timerBadgeWarn: {
+    backgroundColor: '#e53935',
+    borderColor: '#ef9a9a',
+  },
+  timerText: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  timerTextWarn: { color: '#fff' },
+
+  resetBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#e8eaf6',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#c5cae9',
+  },
+  resetBannerWarn: {
+    backgroundColor: '#ffebee',
+    borderBottomColor: '#ef9a9a',
+  },
+  resetBannerText: { fontSize: 12, color: '#3949ab', fontWeight: '600', flex: 1 },
+  resetBannerTextWarn: { color: '#c62828' },
+
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 12, paddingBottom: 8 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   emptyText: { color: '#aaa', textAlign: 'center', marginTop: 12, lineHeight: 22 },
+
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 10 },
   msgRowRestaurant: { flexDirection: 'row-reverse' },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#1a237e',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     marginHorizontal: 6,
   },
   avatarRestaurant: { backgroundColor: '#e91e63' },
   avatarImg: { width: 32, height: 32, borderRadius: 16 },
   avatarInitial: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
   bubble: {
     maxWidth: '72%',
     borderRadius: 16,
@@ -261,6 +346,7 @@ const styles = StyleSheet.create({
   msgTextRestaurant: { color: '#fff' },
   msgTime: { fontSize: 10, color: '#999', marginTop: 4, alignSelf: 'flex-end' },
   msgTimeRestaurant: { color: 'rgba(255,255,255,0.6)' },
+
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -282,12 +368,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 42, height: 42, borderRadius: 21,
     backgroundColor: '#1a237e',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: '#b0bec5' },
 });
