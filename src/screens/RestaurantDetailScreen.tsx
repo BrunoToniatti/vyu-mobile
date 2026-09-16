@@ -43,8 +43,6 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [profileReview, setProfileReview] = useState<Review | null>(null);
-  const [showStreetView, setShowStreetView] = useState(false);
-
   const hasCoords = restaurant.latitude && restaurant.longitude;
 
   const miniMapHtml = hasCoords ? `
@@ -66,93 +64,6 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       iconSize:[36,36],iconAnchor:[18,18]
     });
     L.marker([${restaurant.latitude},${restaurant.longitude}],{icon}).addTo(map).bindPopup('${restaurant.name.replace(/'/g, "\\'")}').openPopup();
-  </script>
-</body></html>` : '';
-
-  const MAPILLARY_TOKEN = process.env.EXPO_PUBLIC_MAPILLARY_TOKEN ?? '';
-  const mapillaryHtml = hasCoords ? `
-<!DOCTYPE html><html><head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mapillary-js@4/dist/mapillary.css"/>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    html,body,#mly{width:100%;height:100%;overflow:hidden;background:#1a1a2e}
-    #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:sans-serif;font-size:14px;gap:12px;background:#1a1a2e}
-    .spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    #error{display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;color:#9ca3af;font-family:sans-serif;font-size:13px;gap:10px;text-align:center;padding:24px;background:#111}
-  </style>
-</head><body>
-  <div id="mly"></div>
-  <div id="loading"><div class="spinner"></div><span>Carregando Street View...</span></div>
-  <div id="error">
-    <svg width="48" height="48" fill="none" stroke="#6b7280" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0z"/></svg>
-    <span id="error-msg">Sem imagens de rua disponíveis neste endereço.</span>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/mapillary-js@4/dist/mapillary.js"></script>
-  <script>
-    var TOKEN = '${MAPILLARY_TOKEN}';
-    var LAT = ${restaurant.latitude};
-    var LNG = ${restaurant.longitude};
-
-    function showError(msg) {
-      document.getElementById('loading').style.display = 'none';
-      var err = document.getElementById('error');
-      err.style.display = 'flex';
-      if (msg) document.getElementById('error-msg').textContent = msg;
-    }
-
-    function initViewer(imageId) {
-      if (typeof mapillary === 'undefined' || !mapillary.Viewer) {
-        showError('Biblioteca não carregou. Verifique sua conexão.');
-        return;
-      }
-      var viewer = new mapillary.Viewer({
-        accessToken: TOKEN,
-        container: 'mly',
-        imageId: imageId,
-        component: { cover: false, sequence: false, zoom: false }
-      });
-      viewer.on('load', function() {
-        document.getElementById('loading').style.display = 'none';
-      });
-      setTimeout(function() {
-        document.getElementById('loading').style.display = 'none';
-      }, 8000);
-    }
-
-    // Raio máximo da API é 50m — tenta com offsets ao redor do ponto
-    var offsets = [
-      [0, 0],
-      [0.0003, 0], [-0.0003, 0],
-      [0, 0.0003], [0, -0.0003],
-      [0.0003, 0.0003], [-0.0003, -0.0003],
-    ];
-    var idx = 0;
-
-    function tryNext() {
-      if (idx >= offsets.length) {
-        showError('Sem imagens de rua disponíveis neste endereço.');
-        return;
-      }
-      var off = offsets[idx++];
-      var lat = LAT + off[0];
-      var lng = LNG + off[1];
-      var url = 'https://graph.mapillary.com/images?fields=id&closeto=' + lng + ',' + lat + '&radius=50&limit=1&access_token=' + TOKEN;
-      fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.data && data.data.length > 0) {
-            initViewer(data.data[0].id);
-          } else {
-            tryNext();
-          }
-        })
-        .catch(tryNext);
-    }
-
-    tryNext();
   </script>
 </body></html>` : '';
 
@@ -305,55 +216,6 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               scrollEnabled={false}
               pointerEvents="none"
             />
-          </View>
-        )}
-
-        {/* Street View */}
-        {hasCoords && (
-          <View style={styles.streetViewCard}>
-            <TouchableOpacity
-              style={styles.streetViewToggle}
-              onPress={() => setShowStreetView(!showStreetView)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.streetViewToggleLeft}>
-                <MaterialIcons name="streetview" size={20} color="#1a237e" />
-                <View>
-                  <Text style={styles.streetViewTitle}>Ver ao redor</Text>
-                  <Text style={styles.streetViewSub}>Street View interativo</Text>
-                </View>
-              </View>
-              <MaterialIcons
-                name={showStreetView ? 'expand-less' : 'expand-more'}
-                size={24}
-                color="#6b7280"
-              />
-            </TouchableOpacity>
-            {showStreetView && (
-              <View style={styles.streetViewContainer}>
-                {hasCoords ? (
-                  <WebView
-                    source={{ html: mapillaryHtml, baseUrl: 'https://cdn.jsdelivr.net' }}
-                    style={styles.streetViewWebView}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    originWhitelist={['*']}
-                    mixedContentMode="always"
-                    onShouldStartLoadWithRequest={(req) => {
-                      if (req.url.startsWith('intent://') || req.url.startsWith('market://')) return false;
-                      return true;
-                    }}
-                  />
-                ) : (
-                  <View style={styles.streetViewNoKey}>
-                    <MaterialIcons name="streetview" size={48} color="#9ca3af" />
-                    <Text style={styles.streetViewNoKeyText}>
-                      Endereço sem coordenadas cadastradas
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
           </View>
         )}
 
@@ -620,59 +482,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   miniMap: { flex: 1 },
-
-  streetViewCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    marginBottom: 12,
-    shadowColor: PRIMARY,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  streetViewToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  streetViewToggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  streetViewTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a237e',
-  },
-  streetViewSub: {
-    fontSize: 11,
-    color: '#9ca3af',
-    marginTop: 1,
-  },
-  streetViewContainer: {
-    height: 280,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  streetViewWebView: { flex: 1 },
-  streetViewNoKey: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 16,
-    backgroundColor: '#f9fafb',
-  },
-  streetViewNoKeyText: {
-    fontSize: 13,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
 
   reviewsSection: { gap: 12 },
   reviewsHeader: {
