@@ -103,27 +103,45 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       if (msg) document.getElementById('error-msg').textContent = msg;
     }
 
-    fetch('https://graph.mapillary.com/images?fields=id,thumb_2048_url&closeto=' + LNG + ',' + LAT + '&radius=100&limit=1&access_token=' + TOKEN)
-      .then(function(r){ return r.json(); })
-      .then(function(data) {
-        if (!data.data || data.data.length === 0) {
-          showError('Sem imagens de rua disponíveis neste endereço.');
-          return;
-        }
-        var imageId = data.data[0].id;
-        var viewer = new mapillary.Viewer({
-          accessToken: TOKEN,
-          container: 'mly',
-          imageId: imageId,
-          component: { cover: false, sequence: false, zoom: false }
-        });
-        viewer.on('load', function() {
-          document.getElementById('loading').style.display = 'none';
-        });
-      })
-      .catch(function(e) {
-        showError('Erro ao carregar imagens.');
+    function initViewer(imageId) {
+      if (typeof mapillary === 'undefined' || !mapillary.Viewer) {
+        showError('Biblioteca não carregou. Verifique sua conexão.');
+        return;
+      }
+      var viewer = new mapillary.Viewer({
+        accessToken: TOKEN,
+        container: 'mly',
+        imageId: imageId,
+        component: { cover: false, sequence: false, zoom: false }
       });
+      viewer.on('load', function() {
+        document.getElementById('loading').style.display = 'none';
+      });
+      setTimeout(function() {
+        document.getElementById('loading').style.display = 'none';
+      }, 8000);
+    }
+
+    // Tenta com raios crescentes: 500m → 2000m → 10000m
+    function searchWithRadius(radius) {
+      var url = 'https://graph.mapillary.com/images?fields=id&closeto=' + LNG + ',' + LAT + '&radius=' + radius + '&limit=1&access_token=' + TOKEN;
+      fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.data && data.data.length > 0) {
+            initViewer(data.data[0].id);
+          } else if (radius < 10000) {
+            searchWithRadius(radius * 4);
+          } else {
+            showError('Sem imagens de rua disponíveis nesta região.');
+          }
+        })
+        .catch(function() {
+          showError('Erro de rede ao buscar imagens.');
+        });
+    }
+
+    searchWithRadius(500);
   </script>
 </body></html>` : '';
 
