@@ -10,12 +10,133 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { getRestaurantReviews, createReview } from '../services/restaurant';
-import { Review } from '../types';
+import { Review, RestaurantQueue } from '../types';
 
 type Props = {
   navigation: StackNavigationProp<RootStackParamList, 'RestaurantDetail'>;
   route: RouteProp<RootStackParamList, 'RestaurantDetail'>;
 };
+
+const OCC_COLORS = {
+  low:    { bar: '#43a047', bg: '#e8f5e9', text: '#2e7d32', label: 'Baixo' },
+  medium: { bar: '#fb8c00', bg: '#fff8e1', text: '#e65100', label: 'Médio' },
+  high:   { bar: '#e53935', bg: '#ffebee', text: '#b71c1c', label: 'Cheio' },
+};
+
+function QueueCard({ queue }: { queue: RestaurantQueue }) {
+  const pct = !queue.max_tables ? 0 : Math.min(100, Math.round((queue.current_tables / queue.max_tables) * 100));
+  const level: 'low' | 'medium' | 'high' = pct < 40 ? 'low' : pct < 75 ? 'medium' : 'high';
+  const colors = OCC_COLORS[level];
+
+  const STATUS_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
+    OPEN:   { icon: 'lock-open', color: '#2e7d32', label: 'Fila Aberta' },
+    CLOSED: { icon: 'lock',     color: '#c62828', label: 'Fila Fechada' },
+    PAUSED: { icon: 'pause-circle-outline', color: '#e65100', label: 'Fila Pausada' },
+  };
+  const statusCfg = STATUS_CONFIG[queue.status] ?? STATUS_CONFIG['OPEN'];
+
+  return (
+    <View style={queueStyles.card}>
+      {/* Header */}
+      <View style={queueStyles.header}>
+        <MaterialIcons name="people-alt" size={18} color="#1a237e" />
+        <Text style={queueStyles.title}>Situação da Fila</Text>
+        <View style={[queueStyles.statusBadge, { backgroundColor: statusCfg.color + '22' }]}>
+          <MaterialIcons name={statusCfg.icon as any} size={13} color={statusCfg.color} />
+          <Text style={[queueStyles.statusText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+        </View>
+      </View>
+
+      {queue.status !== 'CLOSED' && queue.max_tables > 0 && (
+        <>
+          {/* Occupancy bar */}
+          <View style={queueStyles.section}>
+            <View style={queueStyles.pctRow}>
+              <Text style={[queueStyles.pct, { color: colors.bar }]}>{pct}%</Text>
+              <View style={[queueStyles.levelBadge, { backgroundColor: colors.bg }]}>
+                <Text style={[queueStyles.levelText, { color: colors.text }]}>{colors.label}</Text>
+              </View>
+            </View>
+            <View style={queueStyles.barTrack}>
+              <View style={[queueStyles.barFill, { width: `${pct}%` as any, backgroundColor: colors.bar }]} />
+            </View>
+            <View style={queueStyles.scaleRow}>
+              <Text style={queueStyles.scaleLabel}>0%</Text>
+              <Text style={queueStyles.scaleLabel}>50%</Text>
+              <Text style={queueStyles.scaleLabel}>100%</Text>
+            </View>
+          </View>
+
+          {/* Stats */}
+          <View style={queueStyles.statsRow}>
+            <View style={queueStyles.stat}>
+              <MaterialIcons name="table-restaurant" size={20} color="#3f51b5" />
+              <Text style={queueStyles.statValue}>{queue.current_tables}/{queue.max_tables}</Text>
+              <Text style={queueStyles.statLabel}>Mesas</Text>
+            </View>
+            <View style={queueStyles.statDivider} />
+            <View style={queueStyles.stat}>
+              <MaterialIcons name="people" size={20} color="#3f51b5" />
+              <Text style={queueStyles.statValue}>{queue.current_size}</Text>
+              <Text style={queueStyles.statLabel}>Na fila</Text>
+            </View>
+            {queue.estimated_wait_minutes > 0 && (
+              <>
+                <View style={queueStyles.statDivider} />
+                <View style={queueStyles.stat}>
+                  <MaterialIcons name="schedule" size={20} color="#f57f17" />
+                  <Text style={[queueStyles.statValue, { color: '#f57f17' }]}>{queue.estimated_wait_minutes} min</Text>
+                  <Text style={queueStyles.statLabel}>Espera</Text>
+                </View>
+              </>
+            )}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const queueStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#1a237e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 12,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { flex: 1, fontSize: 15, fontWeight: '700', color: '#1a237e' },
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  statusText: { fontSize: 12, fontWeight: '700' },
+  section: { gap: 6 },
+  pctRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pct: { fontSize: 28, fontWeight: '800', lineHeight: 34 },
+  levelBadge: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  levelText: { fontSize: 13, fontWeight: '700' },
+  barTrack: {
+    height: 14, backgroundColor: '#e5e7eb', borderRadius: 7, overflow: 'hidden',
+  },
+  barFill: { height: '100%', borderRadius: 7 },
+  scaleRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  scaleLabel: { fontSize: 10, color: '#9ca3af' },
+  statsRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f8f9ff', borderRadius: 12, padding: 14, gap: 0,
+  },
+  stat: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { fontSize: 17, fontWeight: '800', color: '#1a237e' },
+  statLabel: { fontSize: 11, color: '#9ca3af', fontWeight: '500' },
+  statDivider: { width: 1, height: 40, backgroundColor: '#e5e7eb' },
+});
 
 function StarRow({ value, onPress, size = 28 }: { value: number; onPress?: (v: number) => void; size?: number }) {
   return (
@@ -204,6 +325,11 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Queue Card */}
+        {restaurant.queue && (
+          <QueueCard queue={restaurant.queue} />
+        )}
 
         {/* Mini Map */}
         {hasCoords && (

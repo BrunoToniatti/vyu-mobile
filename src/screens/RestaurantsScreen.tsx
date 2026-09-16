@@ -22,7 +22,7 @@ import { MainTabParamList } from '../../App';
 import { getPublicRestaurants } from '../services/restaurant';
 import { getStoredUser, logout } from '../services/auth';
 import { getAllCategories, getUserPreferences, CategoryItem, Category } from '../services/category';
-import { Restaurant, UserApp } from '../types';
+import { Restaurant, RestaurantQueue, UserApp } from '../types';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -30,6 +30,55 @@ type Props = {
     StackNavigationProp<RootStackParamList>
   >;
 };
+
+function getOccupancyLevel(q: RestaurantQueue): 'low' | 'medium' | 'high' {
+  if (!q.max_tables) return 'low';
+  const pct = Math.min(100, Math.round((q.current_tables / q.max_tables) * 100));
+  if (pct < 40) return 'low';
+  if (pct < 75) return 'medium';
+  return 'high';
+}
+
+const OCC_COLORS = {
+  low:    { bar: '#43a047', bg: '#e8f5e9', text: '#2e7d32', label: 'Baixo' },
+  medium: { bar: '#fb8c00', bg: '#fff8e1', text: '#e65100', label: 'Médio' },
+  high:   { bar: '#e53935', bg: '#ffebee', text: '#b71c1c', label: 'Cheio' },
+};
+
+function QueueMiniBar({ queue }: { queue: RestaurantQueue }) {
+  const pct = !queue.max_tables ? 0 : Math.min(100, Math.round((queue.current_tables / queue.max_tables) * 100));
+  const level = getOccupancyLevel(queue);
+  const colors = OCC_COLORS[level];
+
+  return (
+    <View style={qStyles.container}>
+      <View style={qStyles.divider} />
+      <View style={qStyles.row}>
+        <MaterialIcons name="people" size={13} color={colors.text} />
+        <View style={qStyles.barTrack}>
+          <View style={[qStyles.barFill, { width: `${pct}%` as any, backgroundColor: colors.bar }]} />
+        </View>
+        <View style={[qStyles.badge, { backgroundColor: colors.bg }]}>
+          <Text style={[qStyles.badgeText, { color: colors.text }]}>{pct}% · {colors.label}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const qStyles = StyleSheet.create({
+  container: { paddingHorizontal: 16, paddingBottom: 12 },
+  divider: { height: 1, backgroundColor: '#f3f4f6', marginBottom: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barTrack: {
+    flex: 1, height: 6, backgroundColor: '#e5e7eb', borderRadius: 3, overflow: 'hidden',
+  },
+  barFill: { height: '100%', borderRadius: 3 },
+  badge: {
+    borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+});
 
 export default function RestaurantsScreen({ navigation }: Props) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -148,6 +197,11 @@ export default function RestaurantsScreen({ navigation }: Props) {
             </View>
           )}
         </View>
+
+        {/* Fila / Ocupação */}
+        {item.queue && item.queue.status === 'OPEN' && item.queue.max_tables > 0 && (
+          <QueueMiniBar queue={item.queue} />
+        )}
 
         {/* Categorias */}
         {itemIds.length > 0 && (

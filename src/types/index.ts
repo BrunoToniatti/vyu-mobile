@@ -8,6 +8,16 @@ export interface UserApp {
   photo_url?: string | null;
 }
 
+export interface RestaurantQueue {
+  status: 'OPEN' | 'CLOSED' | 'PAUSED';
+  status_display: string;
+  current_size: number;
+  max_capacity: number;
+  current_tables: number;
+  max_tables: number;
+  estimated_wait_minutes: number;
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -23,6 +33,7 @@ export interface Restaurant {
   average_rating?: number | null;
   review_count?: number;
   longitude?: number | null;
+  queue?: RestaurantQueue | null;
 }
 
 export interface ApiResponse<T> {

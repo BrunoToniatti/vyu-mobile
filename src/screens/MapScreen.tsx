@@ -43,6 +43,12 @@ function buildMapHtml(
     .popup-name { font-size:14px; font-weight:700; color:#1a237e; margin-bottom:6px; }
     .popup-row { display:flex; align-items:flex-start; gap:4px; margin-bottom:4px; font-size:12px; color:#555; }
     .popup-icon { font-size:13px; flex-shrink:0; }
+    .queue-section { margin-top:8px; padding-top:8px; border-top:1px solid #f0f0f0; }
+    .queue-bar-track { width:100%; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden; margin:4px 0; }
+    .queue-bar-fill { height:100%; border-radius:3px; }
+    .queue-info-row { display:flex; align-items:center; justify-content:space-between; font-size:11px; }
+    .queue-pct { font-weight:700; }
+    .queue-badge { border-radius:20px; padding:2px 8px; font-size:11px; font-weight:700; }
   </style>
 </head>
 <body>
@@ -95,11 +101,32 @@ function buildMapHtml(
         var instagramRow = r.instagram
           ? '<div class="popup-row"><span class="popup-icon">📸</span><span>' + r.instagram + '</span></div>'
           : '';
+
+        var queueHtml = '';
+        if (r.queue && r.queue.status !== 'CLOSED' && r.queue.max_tables > 0) {
+          var pct = Math.min(100, Math.round((r.queue.current_tables / r.queue.max_tables) * 100));
+          var barColor = pct < 40 ? '#43a047' : pct < 75 ? '#fb8c00' : '#e53935';
+          var badgeBg  = pct < 40 ? '#e8f5e9' : pct < 75 ? '#fff8e1' : '#ffebee';
+          var badgeFg  = pct < 40 ? '#2e7d32' : pct < 75 ? '#e65100' : '#b71c1c';
+          var badgeLbl = pct < 40 ? 'Baixo' : pct < 75 ? 'Médio' : 'Cheio';
+          var statusIcon = r.queue.status === 'OPEN' ? '🟢' : '⏸️';
+          queueHtml = '<div class="queue-section">'
+            + '<div class="queue-info-row">'
+            + '<span>' + statusIcon + ' Fila: <strong>' + pct + '%</strong></span>'
+            + '<span class="queue-badge" style="background:' + badgeBg + ';color:' + badgeFg + ';">' + badgeLbl + '</span>'
+            + '</div>'
+            + '<div class="queue-bar-track"><div class="queue-bar-fill" style="width:' + pct + '%;background:' + barColor + ';"></div></div>'
+            + '</div>';
+        } else if (r.queue && r.queue.status === 'CLOSED') {
+          queueHtml = '<div class="queue-section"><div style="font-size:11px;color:#c62828;font-weight:700;">🔒 Fila fechada</div></div>';
+        }
+
         var popup = '<div class="popup-content">'
           + '<div class="popup-name">' + r.name + '</div>'
           + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
           + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
           + instagramRow
+          + queueHtml
           + '<button class="saiba-mais-btn" data-id="' + r.id + '" '
           + 'style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">'
           + 'Saiba mais</button>'
@@ -168,6 +195,7 @@ export default function MapScreen({ navigation }: Props) {
       instagram: r.instagram ?? '',
       lat: r.latitude,
       lng: r.longitude,
+      queue: r.queue ?? null,
     }))
   );
 
