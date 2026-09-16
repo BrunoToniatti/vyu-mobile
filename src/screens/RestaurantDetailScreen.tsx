@@ -165,13 +165,76 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [profileReview, setProfileReview] = useState<Review | null>(null);
 
-  // Reservation modal
+  // Reservation modal — 2-step flow
   const [showReservationModal, setShowReservationModal] = useState(false);
-  const [resDate, setResDate] = useState('');
+  const [resStep, setResStep] = useState<'calendar' | 'details'>('calendar');
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth()); // 0-indexed
+  const [resDate, setResDate] = useState('');   // YYYY-MM-DD
   const [resTime, setResTime] = useState('');
-  const [resPartySize, setResPartySize] = useState('2');
+  const [resPartySize, setResPartySize] = useState(2);
   const [resNotes, setResNotes] = useState('');
   const [submittingRes, setSubmittingRes] = useState(false);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function openReservationModal() {
+    const now = new Date();
+    setCalYear(now.getFullYear());
+    setCalMonth(now.getMonth());
+    setResDate('');
+    setResTime('');
+    setResPartySize(2);
+    setResNotes('');
+    setResStep('calendar');
+    setShowReservationModal(true);
+  }
+
+  function closeReservationModal() {
+    setShowReservationModal(false);
+  }
+
+  function selectDay(dateStr: string) {
+    setResDate(dateStr);
+    setResStep('details');
+  }
+
+  function prevMonth() {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); }
+    else setCalMonth(m => m - 1);
+  }
+
+  function nextMonth() {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); }
+    else setCalMonth(m => m + 1);
+  }
+
+  // Build calendar grid for current calYear/calMonth
+  function buildCalendarDays(): (string | null)[] {
+    const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const cells: (string | null)[] = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const mm = String(calMonth + 1).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      cells.push(`${calYear}-${mm}-${dd}`);
+    }
+    return cells;
+  }
+
+  function isPast(dateStr: string): boolean {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt < today;
+  }
+
+  function formatSelectedDate(dateStr: string): string {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
   const hasCoords = restaurant.latitude && restaurant.longitude;
 
   const miniMapHtml = hasCoords ? `
@@ -227,12 +290,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
 
   async function submitReservation() {
     if (!resDate || !resTime) {
-      Alert.alert('Reserva', 'Informe a data e o horário.');
-      return;
-    }
-    const size = parseInt(resPartySize, 10);
-    if (!size || size < 1) {
-      Alert.alert('Reserva', 'Informe a quantidade de pessoas.');
+      Alert.alert('Reserva', 'Informe o horário.');
       return;
     }
     setSubmittingRes(true);
@@ -240,12 +298,11 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       await createReservation(restaurant.id, {
         date: resDate,
         time: resTime,
-        party_size: size,
+        party_size: resPartySize,
         notes: resNotes.trim(),
       });
       setShowReservationModal(false);
-      setResDate(''); setResTime(''); setResPartySize('2'); setResNotes('');
-      Alert.alert('Reserva confirmada!', 'Sua reserva foi registrada com sucesso.');
+      Alert.alert('Reserva confirmada! 🎉', `Reserva para ${formatSelectedDate(resDate)} registrada com sucesso.`);
     } catch (err: any) {
       const msg = err?.response?.data?.errors
         ? Object.values(err.response.data.errors).flat().join(' ')
@@ -365,7 +422,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.reserveBtn, { flex: 1 }]}
-                onPress={() => setShowReservationModal(true)}
+                onPress={openReservationModal}
                 activeOpacity={0.8}
               >
                 <MaterialIcons name="event-seat" size={18} color="#fff" />
@@ -528,32 +585,80 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </Modal>
 
-      {/* Reservation Modal */}
-      <Modal visible={showReservationModal} animationType="slide" transparent>
+      {/* Reservation Modal — Step 1: Calendar */}
+      <Modal visible={showReservationModal && resStep === 'calendar'} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { paddingBottom: 24 }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Escolha o dia</Text>
+            <Text style={styles.modalSubtitle}>{restaurant.name}</Text>
+
+            {/* Month nav */}
+            <View style={calStyles.monthNav}>
+              <TouchableOpacity onPress={prevMonth} style={calStyles.navBtn} activeOpacity={0.7}>
+                <MaterialIcons name="chevron-left" size={28} color="#1a237e" />
+              </TouchableOpacity>
+              <Text style={calStyles.monthLabel}>
+                {new Date(calYear, calMonth).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+              </Text>
+              <TouchableOpacity onPress={nextMonth} style={calStyles.navBtn} activeOpacity={0.7}>
+                <MaterialIcons name="chevron-right" size={28} color="#1a237e" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Week day headers */}
+            <View style={calStyles.weekRow}>
+              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                <Text key={i} style={calStyles.weekDay}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Day grid */}
+            <View style={calStyles.grid}>
+              {buildCalendarDays().map((dateStr, i) => {
+                if (!dateStr) return <View key={`e-${i}`} style={calStyles.dayCell} />;
+                const past = isPast(dateStr);
+                const day = parseInt(dateStr.split('-')[2], 10);
+                const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                const isToday = dateStr === todayStr;
+                return (
+                  <TouchableOpacity
+                    key={dateStr}
+                    style={[calStyles.dayCell, past && calStyles.dayCellPast, isToday && calStyles.dayCellToday]}
+                    onPress={() => !past && selectDay(dateStr)}
+                    activeOpacity={past ? 1 : 0.7}
+                    disabled={past}
+                  >
+                    <Text style={[calStyles.dayText, past && calStyles.dayTextPast, isToday && calStyles.dayTextToday]}>
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={closeReservationModal} activeOpacity={0.7}>
+              <Text style={styles.cancelBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reservation Modal — Step 2: Details */}
+      <Modal visible={showReservationModal && resStep === 'details'} animationType="slide" transparent>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Fazer Reserva</Text>
-            <Text style={styles.modalSubtitle}>{restaurant.name}</Text>
 
-            <View style={resStyles.fieldGroup}>
-              <Text style={resStyles.label}>Data</Text>
-              <TextInput
-                style={resStyles.input}
-                placeholder="AAAA-MM-DD"
-                placeholderTextColor="#9ca3af"
-                value={resDate}
-                onChangeText={(v) => {
-                  // auto-format: insert dashes
-                  const d = v.replace(/\D/g, '').slice(0, 8);
-                  let fmt = d;
-                  if (d.length > 4) fmt = d.slice(0, 4) + '-' + d.slice(4);
-                  if (d.length > 6) fmt = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
-                  setResDate(fmt);
-                }}
-                keyboardType="numeric"
-                maxLength={10}
-              />
+            {/* Back + title */}
+            <View style={resStyles.detailsHeader}>
+              <TouchableOpacity onPress={() => setResStep('calendar')} activeOpacity={0.7} style={resStyles.backBtn}>
+                <MaterialIcons name="arrow-back" size={22} color="#1a237e" />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Detalhes da Reserva</Text>
+                {resDate ? <Text style={resStyles.selectedDate}>{formatSelectedDate(resDate)}</Text> : null}
+              </View>
             </View>
 
             <View style={resStyles.fieldGroup}>
@@ -577,7 +682,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               <View style={resStyles.counterRow}>
                 <TouchableOpacity
                   style={resStyles.counterBtn}
-                  onPress={() => setResPartySize((p) => String(Math.max(1, parseInt(p || '1') - 1)))}
+                  onPress={() => setResPartySize(p => Math.max(1, p - 1))}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="remove" size={22} color="#3f51b5" />
@@ -585,7 +690,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                 <Text style={resStyles.counterValue}>{resPartySize}</Text>
                 <TouchableOpacity
                   style={resStyles.counterBtn}
-                  onPress={() => setResPartySize((p) => String(Math.min(20, parseInt(p || '1') + 1)))}
+                  onPress={() => setResPartySize(p => Math.min(20, p + 1))}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="add" size={22} color="#3f51b5" />
@@ -607,18 +712,14 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => { setShowReservationModal(false); setResDate(''); setResTime(''); setResPartySize('2'); setResNotes(''); }}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={styles.cancelBtn} onPress={closeReservationModal} activeOpacity={0.7}>
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.submitBtn, (!resDate || !resTime) && styles.submitBtnDisabled]}
+                style={[styles.submitBtn, !resTime && styles.submitBtnDisabled]}
                 onPress={submitReservation}
                 activeOpacity={0.8}
-                disabled={submittingRes || !resDate || !resTime}
+                disabled={submittingRes || !resTime}
               >
                 {submittingRes
                   ? <ActivityIndicator color="#fff" size="small" />
@@ -886,6 +987,9 @@ const styles = StyleSheet.create({
 });
 
 const resStyles = StyleSheet.create({
+  detailsHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  backBtn: { padding: 4 },
+  selectedDate: { fontSize: 13, color: '#3f51b5', fontWeight: '600', marginTop: 2, textTransform: 'capitalize' },
   fieldGroup: { gap: 6 },
   label: { fontSize: 13, fontWeight: '700', color: '#374151' },
   input: {
@@ -902,4 +1006,38 @@ const resStyles = StyleSheet.create({
     backgroundColor: '#e8eaf6', alignItems: 'center', justifyContent: 'center',
   },
   counterValue: { fontSize: 22, fontWeight: '800', color: '#1a237e', minWidth: 30, textAlign: 'center' },
+});
+
+const calStyles = StyleSheet.create({
+  monthNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  navBtn: {
+    padding: 6, borderRadius: 20, backgroundColor: '#e8eaf6',
+  },
+  monthLabel: {
+    fontSize: 16, fontWeight: '700', color: '#1a237e', textTransform: 'capitalize', flex: 1, textAlign: 'center',
+  },
+  weekRow: {
+    flexDirection: 'row', marginBottom: 4,
+  },
+  weekDay: {
+    flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700',
+    color: '#9ca3af', paddingVertical: 4,
+  },
+  grid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+  },
+  dayCell: {
+    width: `${100 / 7}%` as any,
+    aspectRatio: 1,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: 100,
+  },
+  dayCellPast: { opacity: 0.3 },
+  dayCellToday: { backgroundColor: '#e8eaf6' },
+  dayText: { fontSize: 15, fontWeight: '600', color: '#1a237e' },
+  dayTextPast: { color: '#9ca3af' },
+  dayTextToday: { color: '#3f51b5', fontWeight: '800' },
 });
