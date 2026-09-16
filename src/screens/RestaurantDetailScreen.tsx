@@ -69,11 +69,63 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   </script>
 </body></html>` : '';
 
-  // Set your Google Maps Embed API key here (enable "Maps Embed API" in Google Cloud Console)
-  const GMAPS_EMBED_KEY = process.env.EXPO_PUBLIC_GMAPS_KEY ?? '';
-  const streetViewUrl = hasCoords && GMAPS_EMBED_KEY
-    ? `https://www.google.com/maps/embed/v1/streetview?key=${GMAPS_EMBED_KEY}&location=${restaurant.latitude},${restaurant.longitude}&fov=90&heading=0&pitch=0`
-    : null;
+  const MAPILLARY_TOKEN = process.env.EXPO_PUBLIC_MAPILLARY_TOKEN ?? '';
+  const mapillaryHtml = hasCoords ? `
+<!DOCTYPE html><html><head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mapillary-js@4/dist/mapillary.css"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body,#mly{width:100%;height:100%;overflow:hidden;background:#1a1a2e}
+    #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:sans-serif;font-size:14px;gap:12px;background:#1a1a2e}
+    .spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #error{display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;color:#9ca3af;font-family:sans-serif;font-size:13px;gap:10px;text-align:center;padding:24px;background:#111}
+  </style>
+</head><body>
+  <div id="mly"></div>
+  <div id="loading"><div class="spinner"></div><span>Carregando Street View...</span></div>
+  <div id="error">
+    <svg width="48" height="48" fill="none" stroke="#6b7280" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0z"/></svg>
+    <span id="error-msg">Sem imagens de rua disponíveis neste endereço.</span>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/mapillary-js@4/dist/mapillary.js"></script>
+  <script>
+    var TOKEN = '${MAPILLARY_TOKEN}';
+    var LAT = ${restaurant.latitude};
+    var LNG = ${restaurant.longitude};
+
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      var err = document.getElementById('error');
+      err.style.display = 'flex';
+      if (msg) document.getElementById('error-msg').textContent = msg;
+    }
+
+    fetch('https://graph.mapillary.com/images?fields=id,thumb_2048_url&closeto=' + LNG + ',' + LAT + '&radius=100&limit=1&access_token=' + TOKEN)
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.data || data.data.length === 0) {
+          showError('Sem imagens de rua disponíveis neste endereço.');
+          return;
+        }
+        var imageId = data.data[0].id;
+        var viewer = new mapillary.Viewer({
+          accessToken: TOKEN,
+          container: 'mly',
+          imageId: imageId,
+          component: { cover: false, sequence: false, zoom: false }
+        });
+        viewer.on('load', function() {
+          document.getElementById('loading').style.display = 'none';
+        });
+      })
+      .catch(function(e) {
+        showError('Erro ao carregar imagens.');
+      });
+  </script>
+</body></html>` : '';
 
   useEffect(() => {
     getRestaurantReviews(restaurant.id)
@@ -250,13 +302,14 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </TouchableOpacity>
             {showStreetView && (
               <View style={styles.streetViewContainer}>
-                {streetViewUrl ? (
+                {hasCoords ? (
                   <WebView
-                    source={{ uri: streetViewUrl }}
+                    source={{ html: mapillaryHtml, baseUrl: 'https://cdn.jsdelivr.net' }}
                     style={styles.streetViewWebView}
                     javaScriptEnabled
                     domStorageEnabled
-                    originWhitelist={['https://*']}
+                    originWhitelist={['*']}
+                    mixedContentMode="always"
                     onShouldStartLoadWithRequest={(req) => {
                       if (req.url.startsWith('intent://') || req.url.startsWith('market://')) return false;
                       return true;
@@ -266,9 +319,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                   <View style={styles.streetViewNoKey}>
                     <MaterialIcons name="streetview" size={48} color="#9ca3af" />
                     <Text style={styles.streetViewNoKeyText}>
-                      {!GMAPS_EMBED_KEY
-                        ? 'Configure EXPO_PUBLIC_GMAPS_KEY para ver o Street View'
-                        : 'Street View não disponível neste endereço'}
+                      Endereço sem coordenadas cadastradas
                     </Text>
                   </View>
                 )}
