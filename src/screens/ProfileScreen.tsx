@@ -12,6 +12,7 @@ import { getAllCategories, getUserPreferences, saveUserPreferences, Category } f
 import { UserApp } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
+import { applyPhoneMask, stripPhoneMask } from '../utils/phoneMask';
 
 type Props = { navigation: BottomTabNavigationProp<MainTabParamList, 'Profile'> };
 
@@ -45,7 +46,7 @@ export default function ProfileScreen({ navigation }: Props) {
       if (u) {
         setFirstName(u.first_name);
         setLastName(u.last_name);
-        setPhone(u.phone_number);
+        setPhone(applyPhoneMask(u.phone_number));
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível carregar o perfil.');
@@ -134,12 +135,13 @@ export default function ProfileScreen({ navigation }: Props) {
     try {
       await saveUserPreferences(Array.from(selected));
       if (editMode && user) {
+        const rawPhone = stripPhoneMask(phone);
         await api.patch('/users/me/', {
           first_name: firstName,
           last_name: lastName,
-          phone_number: phone,
+          phone_number: rawPhone,
         });
-        const updated = { ...user, first_name: firstName, last_name: lastName, phone_number: phone };
+        const updated = { ...user, first_name: firstName, last_name: lastName, phone_number: rawPhone };
         await AsyncStorage.setItem('user', JSON.stringify(updated));
         setUser(updated);
       }
@@ -221,7 +223,7 @@ export default function ProfileScreen({ navigation }: Props) {
               </View>
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Telefone</Text>
-                <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+                <TextInput style={styles.input} value={phone} onChangeText={(v) => setPhone(applyPhoneMask(v))} keyboardType="phone-pad" maxLength={15} />
               </View>
             </View>
           ) : (

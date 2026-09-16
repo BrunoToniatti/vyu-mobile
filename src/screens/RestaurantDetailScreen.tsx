@@ -9,7 +9,7 @@ import { WebView } from 'react-native-webview';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
-import { getRestaurantReviews, createReview } from '../services/restaurant';
+import { getRestaurantReviews, createReview, createReservation } from '../services/restaurant';
 import { Review, RestaurantQueue } from '../types';
 
 type Props = {
@@ -164,6 +164,14 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [profileReview, setProfileReview] = useState<Review | null>(null);
+
+  // Reservation modal
+  const [showReservationModal, setShowReservationModal] = useState(false);
+  const [resDate, setResDate] = useState('');
+  const [resTime, setResTime] = useState('');
+  const [resPartySize, setResPartySize] = useState('2');
+  const [resNotes, setResNotes] = useState('');
+  const [submittingRes, setSubmittingRes] = useState(false);
   const hasCoords = restaurant.latitude && restaurant.longitude;
 
   const miniMapHtml = hasCoords ? `
@@ -215,6 +223,37 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       { text: 'Waze', onPress: () => openDirections('waze') },
       { text: 'Cancelar', style: 'cancel' },
     ]);
+  }
+
+  async function submitReservation() {
+    if (!resDate || !resTime) {
+      Alert.alert('Reserva', 'Informe a data e o horário.');
+      return;
+    }
+    const size = parseInt(resPartySize, 10);
+    if (!size || size < 1) {
+      Alert.alert('Reserva', 'Informe a quantidade de pessoas.');
+      return;
+    }
+    setSubmittingRes(true);
+    try {
+      await createReservation(restaurant.id, {
+        date: resDate,
+        time: resTime,
+        party_size: size,
+        notes: resNotes.trim(),
+      });
+      setShowReservationModal(false);
+      setResDate(''); setResTime(''); setResPartySize('2'); setResNotes('');
+      Alert.alert('Reserva confirmada!', 'Sua reserva foi registrada com sucesso.');
+    } catch (err: any) {
+      const msg = err?.response?.data?.errors
+        ? Object.values(err.response.data.errors).flat().join(' ')
+        : 'Não foi possível fazer a reserva.';
+      Alert.alert('Erro', msg);
+    } finally {
+      setSubmittingRes(false);
+    }
   }
 
   async function submitReview() {
@@ -315,14 +354,24 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
                 <Text style={styles.directionsFullText}>Como chegar</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.chatBtn}
-              onPress={() => navigation.navigate('Chat', { restaurant })}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="chat" size={18} color="#fff" />
-              <Text style={styles.chatBtnText}>Entrar no chat</Text>
-            </TouchableOpacity>
+            <View style={styles.actionRow2}>
+              <TouchableOpacity
+                style={[styles.chatBtn, { flex: 1 }]}
+                onPress={() => navigation.navigate('Chat', { restaurant })}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="chat" size={18} color="#fff" />
+                <Text style={styles.chatBtnText}>Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reserveBtn, { flex: 1 }]}
+                onPress={() => setShowReservationModal(true)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="event-seat" size={18} color="#fff" />
+                <Text style={styles.chatBtnText}>Reservar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -479,6 +528,108 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </Modal>
 
+      {/* Reservation Modal */}
+      <Modal visible={showReservationModal} animationType="slide" transparent>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Fazer Reserva</Text>
+            <Text style={styles.modalSubtitle}>{restaurant.name}</Text>
+
+            <View style={resStyles.fieldGroup}>
+              <Text style={resStyles.label}>Data</Text>
+              <TextInput
+                style={resStyles.input}
+                placeholder="AAAA-MM-DD"
+                placeholderTextColor="#9ca3af"
+                value={resDate}
+                onChangeText={(v) => {
+                  // auto-format: insert dashes
+                  const d = v.replace(/\D/g, '').slice(0, 8);
+                  let fmt = d;
+                  if (d.length > 4) fmt = d.slice(0, 4) + '-' + d.slice(4);
+                  if (d.length > 6) fmt = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
+                  setResDate(fmt);
+                }}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+            </View>
+
+            <View style={resStyles.fieldGroup}>
+              <Text style={resStyles.label}>Horário</Text>
+              <TextInput
+                style={resStyles.input}
+                placeholder="HH:MM"
+                placeholderTextColor="#9ca3af"
+                value={resTime}
+                onChangeText={(v) => {
+                  const t = v.replace(/\D/g, '').slice(0, 4);
+                  setResTime(t.length > 2 ? t.slice(0, 2) + ':' + t.slice(2) : t);
+                }}
+                keyboardType="numeric"
+                maxLength={5}
+              />
+            </View>
+
+            <View style={resStyles.fieldGroup}>
+              <Text style={resStyles.label}>Número de pessoas</Text>
+              <View style={resStyles.counterRow}>
+                <TouchableOpacity
+                  style={resStyles.counterBtn}
+                  onPress={() => setResPartySize((p) => String(Math.max(1, parseInt(p || '1') - 1)))}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="remove" size={22} color="#3f51b5" />
+                </TouchableOpacity>
+                <Text style={resStyles.counterValue}>{resPartySize}</Text>
+                <TouchableOpacity
+                  style={resStyles.counterBtn}
+                  onPress={() => setResPartySize((p) => String(Math.min(20, parseInt(p || '1') + 1)))}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="add" size={22} color="#3f51b5" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={resStyles.fieldGroup}>
+              <Text style={resStyles.label}>Observações (opcional)</Text>
+              <TextInput
+                style={[resStyles.input, { minHeight: 70, textAlignVertical: 'top' }]}
+                placeholder="Alergias, preferências..."
+                placeholderTextColor="#9ca3af"
+                multiline
+                value={resNotes}
+                onChangeText={setResNotes}
+                maxLength={300}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => { setShowReservationModal(false); setResDate(''); setResTime(''); setResPartySize('2'); setResNotes(''); }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitBtn, (!resDate || !resTime) && styles.submitBtnDisabled]}
+                onPress={submitReservation}
+                activeOpacity={0.8}
+                disabled={submittingRes || !resDate || !resTime}
+              >
+                {submittingRes
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.submitBtnText}>Confirmar</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Review Modal */}
       <Modal visible={showReviewModal} animationType="slide" transparent>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -591,9 +742,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: 12,
   },
   directionsFullText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  actionRow2: { flexDirection: 'row', gap: 10 },
   chatBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: '#2e7d32',
+    paddingVertical: 12, borderRadius: 12,
+  },
+  reserveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#1a237e',
     paddingVertical: 12, borderRadius: 12,
   },
   chatBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
@@ -726,4 +883,23 @@ const styles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center',
   },
   profileCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+});
+
+const resStyles = StyleSheet.create({
+  fieldGroup: { gap: 6 },
+  label: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  input: {
+    borderWidth: 1.5, borderColor: '#e5e7eb', borderRadius: 12,
+    padding: 12, fontSize: 15, color: '#1a237e', backgroundColor: '#f8f9ff',
+  },
+  counterRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24,
+    backgroundColor: '#f8f9ff', borderRadius: 12, paddingVertical: 10,
+    borderWidth: 1.5, borderColor: '#e5e7eb',
+  },
+  counterBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#e8eaf6', alignItems: 'center', justifyContent: 'center',
+  },
+  counterValue: { fontSize: 22, fontWeight: '800', color: '#1a237e', minWidth: 30, textAlign: 'center' },
 });

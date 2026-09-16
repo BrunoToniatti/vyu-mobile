@@ -15,6 +15,7 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 import { registerUser, loginUser } from '../services/auth';
+import { applyPhoneMask, stripPhoneMask } from '../utils/phoneMask';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'Register'> };
 
@@ -127,7 +128,7 @@ export default function RegisterScreen({ navigation }: Props) {
     }
     setLoading(true);
     try {
-      await registerUser(form);
+      await registerUser({ ...form, phone_number: stripPhoneMask(form.phone_number) });
       await loginUser(form.email, form.password);
       navigation.replace('Onboarding');
     } catch (err: any) {
@@ -217,10 +218,11 @@ export default function RegisterScreen({ navigation }: Props) {
               <TextInput
                 style={styles.input}
                 value={form.phone_number}
-                onChangeText={(v) => update('phone_number', v)}
+                onChangeText={(v) => update('phone_number', applyPhoneMask(v))}
                 placeholder="(11) 99999-9999"
                 placeholderTextColor="#b0b8d4"
                 keyboardType="phone-pad"
+                maxLength={15}
               />
             </View>
 

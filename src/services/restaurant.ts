@@ -16,3 +16,16 @@ export async function createReview(restaurantId: number, stars: number, comment:
   const res = await api.post(`/restaurants/public/${restaurantId}/reviews/`, { stars, comment });
   return res.data.data;
 }
+
+export async function createReservation(
+  restaurantId: number,
+  data: { date: string; time: string; party_size: number; notes?: string },
+) {
+  const res = await api.post(`/restaurants/public/${restaurantId}/reservations/`, data);
+  return res.data.data;
+}
+
+export async function getMyReservations(restaurantId: number) {
+  const res = await api.get(`/restaurants/public/${restaurantId}/reservations/`);
+  return res.data.data;
+}
