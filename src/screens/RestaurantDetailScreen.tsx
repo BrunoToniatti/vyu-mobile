@@ -122,26 +122,37 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       }, 8000);
     }
 
-    // Tenta com raios crescentes: 500m → 2000m → 10000m
-    function searchWithRadius(radius) {
-      var url = 'https://graph.mapillary.com/images?fields=id&closeto=' + LNG + ',' + LAT + '&radius=' + radius + '&limit=1&access_token=' + TOKEN;
+    // Raio máximo da API é 50m — tenta com offsets ao redor do ponto
+    var offsets = [
+      [0, 0],
+      [0.0003, 0], [-0.0003, 0],
+      [0, 0.0003], [0, -0.0003],
+      [0.0003, 0.0003], [-0.0003, -0.0003],
+    ];
+    var idx = 0;
+
+    function tryNext() {
+      if (idx >= offsets.length) {
+        showError('Sem imagens de rua disponíveis neste endereço.');
+        return;
+      }
+      var off = offsets[idx++];
+      var lat = LAT + off[0];
+      var lng = LNG + off[1];
+      var url = 'https://graph.mapillary.com/images?fields=id&closeto=' + lng + ',' + lat + '&radius=50&limit=1&access_token=' + TOKEN;
       fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.data && data.data.length > 0) {
             initViewer(data.data[0].id);
-          } else if (radius < 10000) {
-            searchWithRadius(radius * 4);
           } else {
-            showError('Sem imagens de rua disponíveis nesta região.');
+            tryNext();
           }
         })
-        .catch(function() {
-          showError('Erro de rede ao buscar imagens.');
-        });
+        .catch(tryNext);
     }
 
-    searchWithRadius(500);
+    tryNext();
   </script>
 </body></html>` : '';
 
