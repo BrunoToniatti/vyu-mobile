@@ -38,6 +38,12 @@ export interface MyReservation {
   time: string;
   party_size: number;
   notes: string;
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CANCELLED' | 'COMPLETED';
   status_display: string;
+  checked_in_at?: string | null;
+}
+
+export async function checkInReservation(reservationId: number): Promise<{ status: string; status_display: string }> {
+  const res = await api.post(`/reservations/${reservationId}/checkin/`);
+  return res.data.data;
 }

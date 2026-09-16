@@ -9,7 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { MainTabParamList } from '../../App';
 import { getStoredUser, logout, uploadUserPhoto, removeUserPhoto } from '../services/auth';
 import { getAllCategories, getUserPreferences, saveUserPreferences, Category } from '../services/category';
-import { getMyReservations, MyReservation } from '../services/restaurant';
+import { getMyReservations, checkInReservation, MyReservation } from '../services/restaurant';
 import { UserApp } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
@@ -30,6 +30,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
   const [reservations, setReservations] = useState<MyReservation[]>([]);
   const [loadingRes, setLoadingRes] = useState(false);
+  const [checkingIn, setCheckingIn] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -66,6 +67,25 @@ export default function ProfileScreen({ navigation }: Props) {
       setReservations(data);
     } catch {}
     finally { setLoadingRes(false); }
+  }
+
+  async function handleCheckIn(r: MyReservation) {
+    setCheckingIn(r.id);
+    try {
+      const updated = await checkInReservation(r.id);
+      setReservations(prev =>
+        prev.map(res => res.id === r.id
+          ? { ...res, status: updated.status as MyReservation['status'], status_display: updated.status_display }
+          : res
+        )
+      );
+      Alert.alert('Check-in realizado! 🎉', `Você está no ${r.restaurant_name}. Boa refeição!`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Não foi possível realizar o check-in.';
+      Alert.alert('Erro', msg);
+    } finally {
+      setCheckingIn(null);
+    }
   }
 
   function togglePref(id: number) {
@@ -328,6 +348,25 @@ export default function ProfileScreen({ navigation }: Props) {
                   {!!r.notes && (
                     <Text style={resStyles.resNotes} numberOfLines={2}>{r.notes}</Text>
                   )}
+
+                  {/* Check-in button — only for CONFIRMED reservations on today's date */}
+                  {r.status === 'CONFIRMED' && r.date === todayISO && (
+                    <TouchableOpacity
+                      style={resStyles.checkInBtn}
+                      onPress={() => handleCheckIn(r)}
+                      activeOpacity={0.85}
+                      disabled={checkingIn === r.id}
+                    >
+                      {checkingIn === r.id ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <>
+                          <MaterialIcons name="place" size={18} color="#fff" />
+                          <Text style={resStyles.checkInText}>Fazer Check-in</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })
@@ -347,11 +386,15 @@ export default function ProfileScreen({ navigation }: Props) {
 }
 
 const RES_STATUS: Record<string, { icon: string; color: string; bg: string }> = {
-  PENDING:   { icon: 'hourglass-empty', color: '#f57f17', bg: '#fff8e1' },
-  CONFIRMED: { icon: 'check-circle',    color: '#2e7d32', bg: '#e8f5e9' },
-  CANCELLED: { icon: 'cancel',          color: '#c62828', bg: '#ffebee' },
-  COMPLETED: { icon: 'done-all',        color: '#1565c0', bg: '#e3f2fd' },
+  PENDING:    { icon: 'hourglass-empty', color: '#f57f17', bg: '#fff8e1' },
+  CONFIRMED:  { icon: 'check-circle',    color: '#2e7d32', bg: '#e8f5e9' },
+  CHECKED_IN: { icon: 'place',           color: '#6a1b9a', bg: '#f3e5f5' },
+  CANCELLED:  { icon: 'cancel',          color: '#c62828', bg: '#ffebee' },
+  COMPLETED:  { icon: 'done-all',        color: '#1565c0', bg: '#e3f2fd' },
 };
+
+const _now = new Date();
+const todayISO = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
 const resStyles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 24, gap: 8 },
@@ -375,6 +418,12 @@ const resStyles = StyleSheet.create({
   resDetail: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   resDetailText: { fontSize: 12, color: '#374151', fontWeight: '500' },
   resNotes: { fontSize: 12, color: '#6b7280', fontStyle: 'italic' },
+  checkInBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#6a1b9a',
+    paddingVertical: 10, borderRadius: 10, marginTop: 4,
+  },
+  checkInText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
 
 function InfoRow({ label, value }: { label: string; value: string }) {
