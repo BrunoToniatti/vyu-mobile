@@ -13,6 +13,7 @@ import RestaurantsScreen from './src/screens/RestaurantsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import MapScreen from './src/screens/MapScreen';
 import RestaurantDetailScreen from './src/screens/RestaurantDetailScreen';
+import RestaurantListScreen from './src/screens/RestaurantListScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import FloatingTabBar from './src/components/FloatingTabBar';
 import { isAuthenticated } from './src/services/auth';
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Preferences: undefined;
   Main: undefined;
+  RestaurantList: undefined;
   RestaurantDetail: { restaurant: Restaurant };
   Chat: { restaurant: Restaurant };
 };
@@ -94,6 +96,11 @@ export default function App() {
             name="Main"
             component={MainTabs}
             options={{ ...TransitionPresets.FadeFromBottomAndroid }}
+          />
+          <Stack.Screen
+            name="RestaurantList"
+            component={RestaurantListScreen}
+            options={{ ...TransitionPresets.SlideFromRightIOS }}
           />
           <Stack.Screen
             name="RestaurantDetail"

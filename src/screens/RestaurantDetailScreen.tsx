@@ -587,7 +587,8 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
 
       {/* Reservation Modal — Step 1: Calendar */}
       <Modal visible={showReservationModal && resStep === 'calendar'} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeReservationModal}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ width: '100%' }}>
           <View style={[styles.modalSheet, { paddingBottom: 24 }]}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Escolha o dia</Text>
@@ -641,12 +642,15 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
               <Text style={styles.cancelBtnText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Reservation Modal — Step 2: Details */}
       <Modal visible={showReservationModal && resStep === 'details'} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeReservationModal}>
+        <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ width: '100%' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
 
@@ -729,11 +733,15 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </View>
           </View>
         </KeyboardAvoidingView>
+        </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Review Modal */}
-      <Modal visible={showReviewModal} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Modal visible={showReviewModal} animationType="slide" transparent onRequestClose={() => { setShowReviewModal(false); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setShowReviewModal(false); setSelectedStars(0); setComment(''); }}>
+        <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ width: '100%' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Sua avaliação</Text>
@@ -776,6 +784,8 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </View>
           </View>
         </KeyboardAvoidingView>
+        </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
