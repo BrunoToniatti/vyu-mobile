@@ -25,7 +25,19 @@ export async function createReservation(
   return res.data.data;
 }
 
-export async function getMyReservations(restaurantId: number) {
-  const res = await api.get(`/restaurants/public/${restaurantId}/reservations/`);
+export async function getMyReservations(): Promise<MyReservation[]> {
+  const res = await api.get('/reservations/mine/');
   return res.data.data;
+}
+
+export interface MyReservation {
+  id: number;
+  restaurant_id: number;
+  restaurant_name: string;
+  date: string;
+  time: string;
+  party_size: number;
+  notes: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+  status_display: string;
 }

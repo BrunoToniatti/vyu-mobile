@@ -9,6 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { MainTabParamList } from '../../App';
 import { getStoredUser, logout, uploadUserPhoto, removeUserPhoto } from '../services/auth';
 import { getAllCategories, getUserPreferences, saveUserPreferences, Category } from '../services/category';
+import { getMyReservations, MyReservation } from '../services/restaurant';
 import { UserApp } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
@@ -27,6 +28,8 @@ export default function ProfileScreen({ navigation }: Props) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [reservations, setReservations] = useState<MyReservation[]>([]);
+  const [loadingRes, setLoadingRes] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -40,6 +43,7 @@ export default function ProfileScreen({ navigation }: Props) {
         getAllCategories(),
         getUserPreferences(),
       ]);
+      loadReservations();
       setUser(u);
       setCategories(cats);
       setSelected(new Set(prefs.map(p => p.id)));
@@ -53,6 +57,15 @@ export default function ProfileScreen({ navigation }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadReservations() {
+    setLoadingRes(true);
+    try {
+      const data = await getMyReservations();
+      setReservations(data);
+    } catch {}
+    finally { setLoadingRes(false); }
   }
 
   function togglePref(id: number) {
@@ -265,6 +278,62 @@ export default function ProfileScreen({ navigation }: Props) {
           ))}
         </View>
 
+        {/* Minhas Reservas */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialIcons name="event-seat" size={20} color="#1a237e" />
+              <Text style={styles.cardTitle}>Minhas Reservas</Text>
+            </View>
+            <TouchableOpacity onPress={loadReservations} activeOpacity={0.7}>
+              <MaterialIcons name="refresh" size={20} color="#3f51b5" />
+            </TouchableOpacity>
+          </View>
+
+          {loadingRes ? (
+            <ActivityIndicator color="#3f51b5" style={{ marginVertical: 16 }} />
+          ) : reservations.length === 0 ? (
+            <View style={resStyles.empty}>
+              <MaterialIcons name="event-busy" size={36} color="#d1d5db" />
+              <Text style={resStyles.emptyText}>Você ainda não tem reservas.</Text>
+            </View>
+          ) : (
+            reservations.map((r) => {
+              const cfg = RES_STATUS[r.status] ?? RES_STATUS.PENDING;
+              const [y, m, d] = r.date.split('-');
+              const dateLabel = `${d}/${m}/${y}`;
+              return (
+                <View key={r.id} style={resStyles.resCard}>
+                  <View style={resStyles.resCardTop}>
+                    <Text style={resStyles.resRestaurant} numberOfLines={1}>{r.restaurant_name}</Text>
+                    <View style={[resStyles.statusBadge, { backgroundColor: cfg.bg }]}>
+                      <MaterialIcons name={cfg.icon as any} size={12} color={cfg.color} />
+                      <Text style={[resStyles.statusText, { color: cfg.color }]}>{r.status_display}</Text>
+                    </View>
+                  </View>
+                  <View style={resStyles.resDetails}>
+                    <View style={resStyles.resDetail}>
+                      <MaterialIcons name="calendar-today" size={14} color="#3f51b5" />
+                      <Text style={resStyles.resDetailText}>{dateLabel}</Text>
+                    </View>
+                    <View style={resStyles.resDetail}>
+                      <MaterialIcons name="schedule" size={14} color="#3f51b5" />
+                      <Text style={resStyles.resDetailText}>{r.time}</Text>
+                    </View>
+                    <View style={resStyles.resDetail}>
+                      <MaterialIcons name="group" size={14} color="#3f51b5" />
+                      <Text style={resStyles.resDetailText}>{r.party_size} pessoa{r.party_size !== 1 ? 's' : ''}</Text>
+                    </View>
+                  </View>
+                  {!!r.notes && (
+                    <Text style={resStyles.resNotes} numberOfLines={2}>{r.notes}</Text>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+
         <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSaveText}>Salvar alterações</Text>}
         </TouchableOpacity>
@@ -276,6 +345,37 @@ export default function ProfileScreen({ navigation }: Props) {
     </View>
   );
 }
+
+const RES_STATUS: Record<string, { icon: string; color: string; bg: string }> = {
+  PENDING:   { icon: 'hourglass-empty', color: '#f57f17', bg: '#fff8e1' },
+  CONFIRMED: { icon: 'check-circle',    color: '#2e7d32', bg: '#e8f5e9' },
+  CANCELLED: { icon: 'cancel',          color: '#c62828', bg: '#ffebee' },
+  COMPLETED: { icon: 'done-all',        color: '#1565c0', bg: '#e3f2fd' },
+};
+
+const resStyles = StyleSheet.create({
+  empty: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+  emptyText: { fontSize: 13, color: '#9ca3af', fontWeight: '500' },
+  resCard: {
+    backgroundColor: '#f8f9ff',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3f51b5',
+  },
+  resCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  resRestaurant: { fontSize: 14, fontWeight: '700', color: '#1a237e', flex: 1 },
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  resDetails: { flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
+  resDetail: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  resDetailText: { fontSize: 12, color: '#374151', fontWeight: '500' },
+  resNotes: { fontSize: 12, color: '#6b7280', fontStyle: 'italic' },
+});
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
