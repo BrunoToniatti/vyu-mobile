@@ -1,219 +1,162 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StatusBar,
-} from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 import { loginUser } from '../services/auth';
+import Aurora from '../components/Aurora';
+import VyuLogo from '../components/VyuLogo';
+import KineticText from '../components/KineticText';
+import Glass from '../components/Glass';
+import Field from '../components/Field';
+import GradientButton from '../components/GradientButton';
+import { useBurst } from '../components/Burst';
+import { useUI } from '../components/Dialog';
+import { colors, fonts } from '../theme';
+import { haptic, shake, shakeX, useEntrance } from '../motion';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'Login'> };
 
 export default function LoginScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
+  const ui = useUI();
+  const burst = useBurst();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ id?: string; pw?: string }>({});
+  const passwordRef = useRef<TextInput>(null);
+  const jolt = useRef(new Animated.Value(0)).current;
+  const enter = useEntrance(5, { step: 90, delay: 450 });
 
   async function handleLogin() {
-    if (!identifier.trim() || !password.trim()) {
-      Alert.alert('Atenção', 'Preencha todos os campos.');
+    const next = {
+      id: identifier.trim() ? undefined : 'Informe seu e-mail ou usuário',
+      pw: password.trim() ? undefined : 'Informe sua senha',
+    };
+    setErrors(next);
+    if (next.id || next.pw) {
+      haptic.error();
+      shake(jolt).start();
       return;
     }
     setLoading(true);
     try {
       await loginUser(identifier.trim(), password);
-      navigation.replace('Main');
+      burst.fire({ power: 1.3, count: 56 });
+      setTimeout(() => navigation.replace('Main'), 450);
     } catch (err: any) {
       const isNetwork = !err?.response;
-      const msg = isNetwork
-        ? 'Não foi possível conectar ao servidor. Verifique sua conexão e se o backend está rodando.'
-        : err?.response?.data?.errors?.detail || 'Credenciais inválidas. Tente novamente.';
-      Alert.alert('Erro', msg);
+      shake(jolt).start();
+      ui.alert({
+        tone: 'danger',
+        title: isNetwork ? 'Sem conexão' : 'Não deu certo',
+        message: isNetwork
+          ? 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.'
+          : err?.response?.data?.errors?.detail || 'Credenciais inválidas. Tente novamente.',
+        icon: isNetwork ? 'wifi-off' : 'lock-outline',
+      });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <>
-      <StatusBar barStyle="light-content" backgroundColor="#1a237e" />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          {/* Hero */}
-          <View style={styles.hero}>
-            <View style={styles.logoWrap}>
-              <Text style={styles.logoEmoji}>🍽️</Text>
+    <Aurora intensity="vivid">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={[styles.container, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.brandRow}>
+            <VyuLogo size={58} />
+            <View>
+              <Text style={styles.brand}>VYU</Text>
+              <Text style={styles.brandTag}>restaurantes ao vivo</Text>
             </View>
-            <Text style={styles.brand}>VYU Restaurantes</Text>
-            <Text style={styles.heroSub}>Encontre os melhores restaurantes perto de você</Text>
           </View>
 
-          {/* Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Bem-vindo de volta</Text>
-            <Text style={styles.cardSub}>Entre com sua conta para continuar</Text>
+          <KineticText
+            text="Veja a vibe antes de chegar."
+            highlight={[2]}
+            delay={200}
+            style={styles.headline}
+            containerStyle={{ marginTop: 44 }}
+          />
+          <Animated.Text style={[styles.lead, enter(0)]}>
+            Lotação em tempo real, reservas em segundos e chat direto com a casa.
+          </Animated.Text>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>E-mail ou usuário</Text>
-              <TextInput
-                style={[styles.input, focusedField === 'id' && styles.inputFocused]}
+          <Animated.View style={enter(1)}>
+            <Animated.View style={{ transform: [{ translateX: shakeX(jolt) }] }}>
+            <Glass strong style={styles.card} intensity={40}>
+              <Text style={styles.cardTitle}>Entrar</Text>
+              <Field
+                label="E-mail ou usuário"
+                icon="alternate-email"
                 value={identifier}
-                onChangeText={setIdentifier}
+                onChangeText={(v) => { setIdentifier(v); if (errors.id) setErrors(e => ({ ...e, id: undefined })); }}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                placeholder="seu@email.com"
-                placeholderTextColor="#b0b8d4"
-                onFocus={() => setFocusedField('id')}
-                onBlur={() => setFocusedField(null)}
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                error={errors.id}
               />
-            </View>
+              <Field
+                ref={passwordRef}
+                label="Senha"
+                icon="lock-outline"
+                secure
+                value={password}
+                onChangeText={(v) => { setPassword(v); if (errors.pw) setErrors(e => ({ ...e, pw: undefined })); }}
+                autoCapitalize="none"
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
+                error={errors.pw}
+                style={{ marginTop: 14 }}
+              />
+              <GradientButton
+                title="Entrar"
+                iconRight="arrow-forward"
+                loading={loading}
+                onPress={handleLogin}
+                style={{ marginTop: 22 }}
+              />
+            </Glass>
+            </Animated.View>
+          </Animated.View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Senha</Text>
-              <View style={styles.passwordRow}>
-                <TextInput
-                  style={[styles.input, styles.passwordInput, focusedField === 'pw' && styles.inputFocused]}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  placeholder="••••••••"
-                  placeholderTextColor="#b0b8d4"
-                  onFocus={() => setFocusedField('pw')}
-                  onBlur={() => setFocusedField(null)}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword((v) => !v)}
-                  style={styles.eyeBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+          <Animated.View style={[styles.divider, enter(2)]}>
+            <View style={styles.line} />
+            <Text style={styles.dividerText}>primeira vez aqui?</Text>
+            <View style={styles.line} />
+          </Animated.View>
 
-            <TouchableOpacity
-              style={[styles.btn, loading && styles.btnDisabled]}
-              onPress={handleLogin}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnText}>Entrar</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>ou</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity
+          <Animated.View style={enter(3)}>
+            <GradientButton
+              title="Criar minha conta"
+              icon="auto-awesome"
+              variant="ghost"
               onPress={() => navigation.navigate('Register')}
-              style={styles.registerBtn}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.registerBtnText}>Criar nova conta</Text>
-            </TouchableOpacity>
-          </View>
+            />
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </>
+    </Aurora>
   );
 }
 
-const PRIMARY = '#1a237e';
-const PRIMARY_MID = '#283593';
-const ACCENT = '#3f51b5';
-
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: PRIMARY },
-  container: { flexGrow: 1, padding: 24 },
-
-  hero: { alignItems: 'center', paddingTop: 48, paddingBottom: 36 },
-  logoWrap: {
-    width: 80, height: 80, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logoEmoji: { fontSize: 40 },
-  brand: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  heroSub: { fontSize: 13, color: '#c5cae9', textAlign: 'center', marginTop: 6, lineHeight: 20 },
-
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 10,
-    marginBottom: 32,
-  },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: PRIMARY, marginBottom: 4 },
-  cardSub: { fontSize: 13, color: '#6b7280', marginBottom: 24 },
-
-  fieldGroup: { marginBottom: 16 },
-  label: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
-  input: {
-    borderWidth: 1.5,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    fontSize: 15,
-    color: '#111827',
-    backgroundColor: '#f9fafb',
-  },
-  inputFocused: { borderColor: ACCENT, backgroundColor: '#fff' },
-  passwordRow: { position: 'relative' },
-  passwordInput: { paddingRight: 50 },
-  eyeBtn: { position: 'absolute', right: 14, top: 13 },
-  eyeText: { fontSize: 18 },
-
-  btn: {
-    backgroundColor: ACCENT,
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 4,
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnDisabled: { opacity: 0.6, shadowOpacity: 0 },
-  btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#e5e7eb' },
-  dividerText: { marginHorizontal: 12, color: '#9ca3af', fontSize: 13 },
-
-  registerBtn: {
-    borderWidth: 1.5,
-    borderColor: ACCENT,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  registerBtnText: { color: ACCENT, fontWeight: '700', fontSize: 15 },
+  container: { flexGrow: 1, paddingHorizontal: 22, maxWidth: 520, width: '100%', alignSelf: 'center' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  brand: { fontFamily: fonts.display, fontSize: 26, letterSpacing: 6, color: colors.text },
+  brandTag: { fontFamily: fonts.bodySemi, fontSize: 11, letterSpacing: 2, color: colors.cyan, textTransform: 'uppercase' },
+  headline: { fontFamily: fonts.display, fontSize: 44, lineHeight: 48, letterSpacing: -1.6, color: colors.text },
+  lead: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.textSub, marginTop: 14, marginBottom: 28 },
+  card: { padding: 20, borderRadius: 30 },
+  cardTitle: { fontFamily: fonts.displaySemi, fontSize: 18, color: colors.text, marginBottom: 16 },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 24 },
+  line: { flex: 1, height: 1, backgroundColor: colors.glassLine },
+  dividerText: { fontFamily: fonts.bodyMed, fontSize: 12, color: colors.textHint, letterSpacing: 0.5 },
 });

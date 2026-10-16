@@ -6,7 +6,8 @@
     "sdkVersion": "57.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0617",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true

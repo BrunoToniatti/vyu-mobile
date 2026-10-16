@@ -1,70 +1,175 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, RefreshControl, StatusBar,
-  Platform, Image, TextInput,
-} from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 import { getPublicRestaurants } from '../services/restaurant';
 import { getAllCategories, getUserPreferences, CategoryItem, Category } from '../services/category';
-import { Restaurant, RestaurantQueue } from '../types';
+import { Restaurant } from '../types';
+import Aurora from '../components/Aurora';
+import Glass from '../components/Glass';
+import PressableScale from '../components/PressableScale';
+import OccupancyBar from '../components/OccupancyBar';
+import Skeleton from '../components/Skeleton';
+import { useUI } from '../components/Dialog';
+import { colors, fonts, gradients, initialsOf, occupancyOf } from '../theme';
+import { ease, springTo, tween } from '../motion';
 
-type Props = {
-  navigation: StackNavigationProp<RootStackParamList, 'RestaurantList'>;
-};
+type Props = { navigation: StackNavigationProp<RootStackParamList, 'RestaurantList'> };
+type Filter = 'all' | 'match' | 'calm' | 'open' | 'top';
+type IconName = React.ComponentProps<typeof MaterialIcons>['name'];
 
-function getOccupancyLevel(q: RestaurantQueue): 'low' | 'medium' | 'high' {
-  if (!q.max_tables) return 'low';
-  const pct = Math.min(100, Math.round((q.current_tables / q.max_tables) * 100));
-  return pct < 40 ? 'low' : pct < 75 ? 'medium' : 'high';
-}
+const FILTERS: { key: Filter; label: string; icon: IconName }[] = [
+  { key: 'all', label: 'Todos', icon: 'apps' },
+  { key: 'match', label: 'Pra você', icon: 'favorite' },
+  { key: 'calm', label: 'Tranquilos', icon: 'self-improvement' },
+  { key: 'open', label: 'Abertos', icon: 'storefront' },
+  { key: 'top', label: 'Bem avaliados', icon: 'star' },
+];
 
-const OCC_COLORS = {
-  low:    { bar: '#43a047', bg: '#e8f5e9', text: '#2e7d32', label: 'Baixo' },
-  medium: { bar: '#fb8c00', bg: '#fff8e1', text: '#e65100', label: 'Médio' },
-  high:   { bar: '#e53935', bg: '#ffebee', text: '#b71c1c', label: 'Cheio' },
-};
+function RestaurantCard({ item, index, isMatch, preferredIds, categoryMap, onPress }: {
+  item: Restaurant;
+  index: number;
+  isMatch: boolean;
+  preferredIds: Set<number>;
+  categoryMap: Map<number, { name: string; categoryName: string }>;
+  onPress: () => void;
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(t, { toValue: 1, duration: 900, delay: Math.min(index, 8) * 70, easing: ease.out4, useNativeDriver: true }).start();
+  }, [t, index]);
 
-function QueueMiniBar({ queue }: { queue: RestaurantQueue }) {
-  const pct = !queue.max_tables ? 0 : Math.min(100, Math.round((queue.current_tables / queue.max_tables) * 100));
-  const level = getOccupancyLevel(queue);
-  const colors = OCC_COLORS[level];
-  return (
-    <View style={qStyles.container}>
-      <View style={qStyles.divider} />
-      <View style={qStyles.row}>
-        <MaterialIcons name="people" size={13} color={colors.text} />
-        <View style={qStyles.barTrack}>
-          <View style={[qStyles.barFill, { width: `${pct}%` as any, backgroundColor: colors.bar }]} />
+  const itemIds = item.category_items ?? [];
+  const showQueue = !!item.queue && item.queue.status === 'OPEN' && item.queue.max_tables > 0;
+  const occ = occupancyOf(item.queue);
+
+  const inner = (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <View style={styles.thumb}>
+          {item.photo_url ? (
+            <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
+            <LinearGradient colors={[colors.plum, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.thumbFallback]}>
+              <Text style={styles.thumbInitials}>{initialsOf(item.name)}</Text>
+            </LinearGradient>
+          )}
         </View>
-        <View style={[qStyles.badge, { backgroundColor: colors.bg }]}>
-          <Text style={[qStyles.badgeText, { color: colors.text }]}>{pct}% · {colors.label}</Text>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            {item.average_rating ? (
+              <View style={styles.rating}>
+                <MaterialIcons name="star" size={12} color={colors.gold} />
+                <Text style={styles.ratingText}>{item.average_rating.toFixed(1)}</Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.metaRow}>
+            <MaterialIcons name="place" size={12} color={colors.textHint} />
+            <Text style={styles.meta} numberOfLines={1}>{item.address}</Text>
+          </View>
+          <View style={styles.contactRow}>
+            {!!item.contact_phone && (
+              <View style={styles.metaRow}>
+                <MaterialIcons name="call" size={12} color={colors.textHint} />
+                <Text style={styles.meta}>{item.contact_phone}</Text>
+              </View>
+            )}
+            {!!item.instagram && (
+              <View style={styles.metaRow}>
+                <MaterialIcons name="alternate-email" size={12} color={colors.textHint} />
+                <Text style={styles.meta} numberOfLines={1}>{item.instagram.replace(/^@/, '')}</Text>
+              </View>
+            )}
+          </View>
         </View>
+        <MaterialIcons name="arrow-outward" size={20} color={colors.textHint} />
       </View>
+
+      {showQueue && (
+        <View style={styles.queue}>
+          <OccupancyBar pct={occ.pct} level={occ.level} delay={300 + Math.min(index, 8) * 70} />
+        </View>
+      )}
+
+      {itemIds.length > 0 && (
+        <View style={styles.tags}>
+          {itemIds.map(id => {
+            const info = categoryMap.get(id);
+            if (!info) return null;
+            const matched = preferredIds.has(id);
+            return (
+              <View key={id} style={[styles.tag, matched && styles.tagOn]}>
+                {matched && <MaterialIcons name="check" size={11} color={colors.cyan} />}
+                <Text style={[styles.tagText, matched && { color: colors.cyan }]}>{info.name}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
+  );
+
+  return (
+    <Animated.View
+      style={{
+        opacity: t,
+        transform: [
+          { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
+          { scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+        ],
+      }}
+    >
+      <PressableScale onPress={onPress} scaleTo={0.97}>
+        {isMatch ? (
+          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.matchBorder}>
+            <View style={styles.matchInner}>{inner}</View>
+          </LinearGradient>
+        ) : (
+          <Glass style={{ borderRadius: 26 }}>{inner}</Glass>
+        )}
+      </PressableScale>
+    </Animated.View>
   );
 }
 
-const qStyles = StyleSheet.create({
-  container: { paddingHorizontal: 16, paddingBottom: 12 },
-  divider: { height: 1, backgroundColor: '#f3f4f6', marginBottom: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barTrack: { flex: 1, height: 6, backgroundColor: '#e5e7eb', borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 3 },
-  badge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-});
+function FilterChip({ f, active, onPress }: { f: typeof FILTERS[number]; active: boolean; onPress: () => void }) {
+  const on = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    springTo(on, active ? 1 : 0, { bounce: 0.5, duration: 480 }).start();
+  }, [active, on]);
+  return (
+    <PressableScale onPress={onPress} feedback="select" scaleTo={0.9} style={styles.filter}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: on, transform: [{ scale: on.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }] }]}>
+        <LinearGradient colors={gradients.primaryShort} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
+      </Animated.View>
+      <MaterialIcons name={f.icon} size={15} color={active ? '#fff' : colors.textSub} />
+      <Text style={[styles.filterText, active && { color: '#fff' }]}>{f.label}</Text>
+    </PressableScale>
+  );
+}
 
 export default function RestaurantListScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
+  const ui = useUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [filtered, setFiltered] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [focused, setFocused] = useState(false);
   const [preferredIds, setPreferredIds] = useState<Set<number>>(new Set());
   const [categoryMap, setCategoryMap] = useState<Map<number, { name: string; categoryName: string }>>(new Map());
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    tween(glow, focused ? 1 : 0, { duration: 300 }).start();
+  }, [focused, glow]);
 
   async function fetchData() {
     try {
@@ -74,232 +179,190 @@ export default function RestaurantListScreen({ navigation }: Props) {
         getAllCategories().catch(() => [] as Category[]),
       ]);
       const map = new Map<number, { name: string; categoryName: string }>();
-      categories.forEach((cat) => {
-        cat.items.forEach((item) => map.set(item.id, { name: item.name, categoryName: cat.name }));
-      });
+      categories.forEach(cat => cat.items.forEach(item => map.set(item.id, { name: item.name, categoryName: cat.name })));
       setCategoryMap(map);
-      const prefItemIds = new Set(prefs.map((p) => p.id));
+
+      const prefItemIds = new Set(prefs.map(p => p.id));
       setPreferredIds(prefItemIds);
-      const sorted = [...data].sort((a, b) => {
-        const aM = (a.category_items ?? []).some((id) => prefItemIds.has(id));
-        const bM = (b.category_items ?? []).some((id) => prefItemIds.has(id));
-        return aM === bM ? 0 : aM ? -1 : 1;
-      });
-      setRestaurants(sorted);
-      setFiltered(sorted);
+      setRestaurants(
+        [...data].sort((a, b) => {
+          const aM = (a.category_items ?? []).some(id => prefItemIds.has(id));
+          const bM = (b.category_items ?? []).some(id => prefItemIds.has(id));
+          return aM === bM ? 0 : aM ? -1 : 1;
+        }),
+      );
     } catch {
-      Alert.alert('Erro', 'Não foi possível carregar os restaurantes.');
+      ui.alert({ tone: 'danger', title: 'Ops', message: 'Não foi possível carregar os restaurantes.' });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); }, []);
 
-  useEffect(() => {
-    if (!search.trim()) { setFiltered(restaurants); return; }
-    const q = search.toLowerCase();
-    setFiltered(restaurants.filter((r) =>
-      r.name.toLowerCase().includes(q) || r.address.toLowerCase().includes(q)
-    ));
-  }, [search, restaurants]);
+  const isMatch = (r: Restaurant) => preferredIds.size > 0 && (r.category_items ?? []).some(id => preferredIds.has(id));
 
-  function RestaurantCard({ item }: { item: Restaurant }) {
-    const initials = item.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-    const itemIds = item.category_items ?? [];
-    const isMatch = preferredIds.size > 0 && itemIds.some((id) => preferredIds.has(id));
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return restaurants.filter(r => {
+      if (q && !(r.name.toLowerCase().includes(q) || r.address.toLowerCase().includes(q))) return false;
+      switch (filter) {
+        case 'match': return isMatch(r);
+        case 'calm': return !!r.queue?.max_tables && occupancyOf(r.queue).level === 'low';
+        case 'open': return r.queue?.status === 'OPEN';
+        case 'top': return (r.average_rating ?? 0) >= 4;
+        default: return true;
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurants, search, filter, preferredIds]);
 
-    return (
-      <TouchableOpacity
-        style={[styles.card, isMatch && styles.cardHighlight]}
-        onPress={() => navigation.navigate('RestaurantDetail', { restaurant: item })}
-        activeOpacity={0.85}
-      >
-        {!!item.photo_url && (
-          <Image source={{ uri: item.photo_url }} style={styles.cardPhoto} resizeMode="cover" />
-        )}
-        <View style={styles.cardTop}>
-          {!item.photo_url && (
-            <View style={[styles.avatar, isMatch && styles.avatarMatch]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-          )}
-          <View style={styles.cardInfo}>
-            <Text style={styles.restaurantName} numberOfLines={1}>{item.name}</Text>
-            <View style={styles.addressRow}>
-              <MaterialIcons name="location-on" size={12} color="#9ca3af" />
-              <Text style={styles.address} numberOfLines={1}>{item.address}</Text>
-            </View>
-          </View>
-          {isMatch && (
-            <View style={styles.matchDot}>
-              <MaterialIcons name="stars" size={18} color="#3f51b5" />
-            </View>
-          )}
-        </View>
-        <View style={styles.contactRow}>
-          <View style={styles.contactItem}>
-            <MaterialIcons name="phone" size={13} color="#6b7280" />
-            <Text style={styles.contactText}>{item.contact_phone}</Text>
-          </View>
-          {!!item.instagram && (
-            <View style={styles.contactItem}>
-              <MaterialIcons name="tag" size={13} color="#6b7280" />
-              <Text style={styles.contactText}>{item.instagram}</Text>
-            </View>
-          )}
-        </View>
-        {item.queue && item.queue.status === 'OPEN' && item.queue.max_tables > 0 && (
-          <QueueMiniBar queue={item.queue} />
-        )}
-        {itemIds.length > 0 && (
-          <>
-            <View style={styles.divider} />
-            <View style={styles.tagsContainer}>
-              {itemIds.map((id) => {
-                const info = categoryMap.get(id);
-                if (!info) return null;
-                const matched = preferredIds.has(id);
-                return (
-                  <View key={id} style={[styles.tag, matched && styles.tagMatched]}>
-                    {matched && <MaterialIcons name="check-circle" size={12} color="#3f51b5" style={{ marginRight: 3 }} />}
-                    <Text style={[styles.tagText, matched && styles.tagTextMatched]}>{info.name}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </>
-        )}
-      </TouchableOpacity>
-    );
-  }
+  const titleScale = scrollY.interpolate({ inputRange: [-80, 0, 120], outputRange: [1.15, 1, 0.72], extrapolate: 'clamp' });
+  const titleShift = scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, -18], extrapolate: 'clamp' });
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a237e" />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Restaurantes</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <Aurora intensity="calm" sparkles={6}>
+      <View style={{ paddingTop: insets.top + 10 }}>
+        <View style={styles.topRow}>
+          <PressableScale onPress={() => navigation.goBack()} style={styles.iconBtn} scaleTo={0.88} accessibilityLabel="Voltar">
+            <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+          </PressableScale>
+          <Text style={styles.count}>
+            <Text style={{ color: colors.cyan }}>{filtered.length}</Text> lugar{filtered.length !== 1 ? 'es' : ''}
+          </Text>
+        </View>
+        <Animated.Text style={[styles.title, { transform: [{ translateY: titleShift }, { scale: titleScale }] }]}>
+          Explorar
+        </Animated.Text>
 
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={20} color="#9ca3af" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar por nome ou endereço..."
-          placeholderTextColor="#9ca3af"
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-        />
-        {!!search && (
-          <TouchableOpacity onPress={() => setSearch('')} activeOpacity={0.7}>
-            <MaterialIcons name="close" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
-      </View>
+        <View style={styles.searchWrap}>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { margin: -1.5, opacity: glow }]}>
+            <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1, borderRadius: 24 }} />
+          </Animated.View>
+          <View style={styles.search}>
+            <MaterialIcons name="search" size={22} color={focused ? colors.cyan : colors.textHint} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por nome ou endereço"
+              placeholderTextColor={colors.textHint}
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+              selectionColor={colors.cyan}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+            />
+            {!!search && (
+              <PressableScale onPress={() => setSearch('')} style={styles.clear} scaleTo={0.8} accessibilityLabel="Limpar busca">
+                <MaterialIcons name="close" size={16} color={colors.text} />
+              </PressableScale>
+            )}
+          </View>
+        </View>
 
-      {!loading && (
-        <Text style={styles.countText}>
-          {filtered.length} restaurante{filtered.length !== 1 ? 's' : ''}
-          {preferredIds.size > 0 ? ' · ordenados por preferência' : ''}
-        </Text>
-      )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+          {FILTERS.map(f => (
+            <FilterChip key={f.key} f={f} active={filter === f.key} onPress={() => setFilter(f.key)} />
+          ))}
+        </ScrollView>
+      </View>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#3f51b5" />
-          <Text style={styles.loadingText}>Carregando...</Text>
+        <View style={styles.list}>
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} style={{ height: 130, borderRadius: 26, marginBottom: 12 }} delay={i * 120} />)}
         </View>
       ) : (
-        <FlatList
+        <Animated.FlatList
           data={filtered}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => <RestaurantCard item={item} />}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} colors={['#3f51b5']} />}
+          keyExtractor={item => String(item.id)}
+          renderItem={({ item, index }) => (
+            <RestaurantCard
+              item={item}
+              index={index}
+              isMatch={isMatch(item)}
+              preferredIds={preferredIds}
+              categoryMap={categoryMap}
+              onPress={() => navigation.navigate('RestaurantDetail', { restaurant: item })}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 40 }]}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); fetchData(); }}
+              tintColor={colors.cyan}
+              colors={[colors.purple, colors.cyan]}
+              progressBackgroundColor={colors.night}
+            />
+          }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <MaterialIcons name="restaurant" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>
-                {search ? 'Nenhum resultado encontrado' : 'Nenhum restaurante disponível'}
-              </Text>
+            <View style={styles.empty}>
+              <MaterialIcons name={search ? 'search-off' : 'restaurant'} size={44} color={colors.textHint} />
+              <Text style={styles.emptyTitle}>{search || filter !== 'all' ? 'Nada por aqui' : 'Nenhum restaurante disponível'}</Text>
+              {(search || filter !== 'all') && <Text style={styles.emptySub}>Tente outro termo ou filtro.</Text>}
             </View>
           }
           showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
+    </Aurora>
   );
 }
 
-const PRIMARY = '#1a237e';
-const ACCENT = '#3f51b5';
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f5fb' },
-
-  header: {
-    backgroundColor: PRIMARY,
-    paddingTop: Platform.OS === 'ios' ? 56 : 44,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
+  iconBtn: {
+    width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassLine,
   },
-  backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: '#fff', textAlign: 'center' },
-
-  searchContainer: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#fff', margin: 12,
-    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
-    shadowColor: PRIMARY, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  count: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textSub },
+  title: {
+    fontFamily: fonts.display, fontSize: 48, letterSpacing: -2, color: colors.text,
+    paddingHorizontal: 20, marginTop: 12, transformOrigin: 'left center',
   },
-  searchInput: { flex: 1, fontSize: 14, color: '#374151' },
-  countText: { fontSize: 12, color: '#9ca3af', paddingHorizontal: 16, paddingBottom: 4, fontWeight: '500' },
-
-  list: { padding: 12, paddingBottom: 100 },
-
-  card: {
-    backgroundColor: '#fff', borderRadius: 16, marginBottom: 12,
-    shadowColor: PRIMARY, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+  searchWrap: { marginHorizontal: 20, marginTop: 6, borderRadius: 24 },
+  search: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, height: 54, paddingHorizontal: 16, borderRadius: 23,
+    backgroundColor: '#150E33', borderWidth: 1, borderColor: colors.glassLine,
   },
-  cardHighlight: { borderWidth: 1.5, borderColor: ACCENT },
-  cardPhoto: { width: '100%', height: 140, borderRadius: 0 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  avatar: {
-    width: 48, height: 48, borderRadius: 14,
-    backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  searchInput: { flex: 1, fontFamily: fonts.bodyMed, fontSize: 15, color: colors.text, outlineStyle: 'none' } as any,
+  clear: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.glassStrong, alignItems: 'center', justifyContent: 'center' },
+  filters: { gap: 8, paddingHorizontal: 20, paddingVertical: 14 },
+  filter: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 20,
+    backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.glassLine, overflow: 'hidden',
   },
-  avatarMatch: { backgroundColor: PRIMARY },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  cardInfo: { flex: 1 },
-  restaurantName: { fontSize: 15, fontWeight: '700', color: PRIMARY, marginBottom: 4 },
-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  address: { fontSize: 12, color: '#9ca3af', flex: 1 },
-  matchDot: { paddingLeft: 4 },
-  contactRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 16, paddingBottom: 12 },
-  contactItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  contactText: { fontSize: 12, color: '#6b7280' },
-  divider: { height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 16 },
-  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, paddingHorizontal: 16, gap: 6 },
+  filterText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.textSub },
+  list: { paddingHorizontal: 20, paddingTop: 4 },
+
+  matchBorder: { borderRadius: 26, padding: 1.5 },
+  matchInner: { borderRadius: 25, backgroundColor: '#140D31', overflow: 'hidden' },
+  card: { padding: 14, gap: 12 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  thumb: { width: 72, height: 72, borderRadius: 20, overflow: 'hidden', backgroundColor: colors.night },
+  thumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  thumbInitials: { fontFamily: fonts.display, fontSize: 26, color: '#fff' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { flexShrink: 1, fontFamily: fonts.displaySemi, fontSize: 17, color: colors.text, letterSpacing: -0.3 },
+  rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.gold },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  meta: { flexShrink: 1, fontFamily: fonts.body, fontSize: 12, color: colors.textHint },
+  contactRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  queue: { paddingTop: 2 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tag: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#f3f4f6', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.glassLine,
   },
-  tagMatched: { backgroundColor: '#e8eaf6', borderWidth: 1, borderColor: '#c5cae9' },
-  tagText: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
-  tagTextMatched: { color: ACCENT, fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 48 },
-  loadingText: { color: '#9ca3af', marginTop: 12, fontSize: 14 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: '#9ca3af', marginTop: 12, textAlign: 'center' },
+  tagOn: { backgroundColor: 'rgba(100,235,226,0.1)', borderColor: 'rgba(100,235,226,0.4)' },
+  tagText: { fontFamily: fonts.bodySemi, fontSize: 11, color: colors.textSub },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 60 },
+  emptyTitle: { fontFamily: fonts.displaySemi, fontSize: 17, color: colors.textSub },
+  emptySub: { fontFamily: fonts.body, fontSize: 13, color: colors.textHint },
 });

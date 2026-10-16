@@ -1,21 +1,26 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
-import { WebView } from 'react-native-webview';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { getPublicRestaurants } from '../services/restaurant';
-import { Restaurant } from '../types';
+import { CompositeNavigationProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { RootStackParamList, MainTabParamList } from '../../App';
+import { getPublicRestaurants } from '../services/restaurant';
+import { Restaurant } from '../types';
+import Aurora from '../components/Aurora';
+import Glass from '../components/Glass';
+import GradientButton from '../components/GradientButton';
+import PressableScale from '../components/PressableScale';
+import KineticText from '../components/KineticText';
+import OccupancyRing from '../components/OccupancyRing';
+import LeafletView, { LEAFLET_HEAD, LeafletHandle } from '../components/LeafletView';
+import { colors, fonts, initialsOf, occupancyOf, occupancyTheme } from '../theme';
+import { ease, springTo, tween, useEntrance, useLoop } from '../motion';
 
 type Status = 'loading' | 'denied' | 'ready';
-
 type Props = {
   navigation: CompositeNavigationProp<
     BottomTabNavigationProp<MainTabParamList, 'Map'>,
@@ -23,316 +28,329 @@ type Props = {
   >;
 };
 
-function buildMapHtml(
-  lat: number,
-  lng: number,
-  restaurantsJson: string,
-): string {
-  // Leaflet CSS inlined to avoid CDN dependency for styles
-  // JS still from CDN but guarded by window.onload to prevent race condition
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    html,body,#map { width:100%; height:100%; background:#e8eaf6; }
-    .popup-content { font-family:-apple-system,sans-serif; min-width:180px; }
-    .popup-name { font-size:14px; font-weight:700; color:#1a237e; margin-bottom:6px; }
-    .popup-row { display:flex; align-items:flex-start; gap:4px; margin-bottom:4px; font-size:12px; color:#555; }
-    .popup-icon { font-size:13px; flex-shrink:0; }
-    .queue-section { margin-top:8px; padding-top:8px; border-top:1px solid #f0f0f0; }
-    .queue-bar-track { width:100%; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden; margin:4px 0; }
-    .queue-bar-fill { height:100%; border-radius:3px; }
-    .queue-info-row { display:flex; align-items:center; justify-content:space-between; font-size:11px; }
-    .queue-pct { font-weight:700; }
-    .queue-badge { border-radius:20px; padding:2px 8px; font-size:11px; font-weight:700; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script>
-    // Guard: retry until Leaflet is available (handles slow CDN)
-    function initMap() {
-      if (typeof L === 'undefined') {
-        setTimeout(initMap, 100);
-        return;
-      }
+function buildMapHtml(lat: number, lng: number, restaurantsJson: string) {
+  return `<!DOCTYPE html><html><head>${LEAFLET_HEAD}</head><body><div id="map"></div><script>
+  var map, markers = {}, active = null, me = [${lat}, ${lng}];
+  function setActive(id){
+    if(active && markers[active]) markers[active].getElement() && markers[active].getElement().firstChild.classList.remove('active');
+    active = id;
+    if(id && markers[id] && markers[id].getElement()) markers[id].getElement().firstChild.classList.add('active');
+  }
+  window.handleCommand = function(cmd){
+    if(!map) return;
+    if(cmd.type==='recenter'){ setActive(null); map.flyTo(me, 15, {duration:1.1}); }
+    if(cmd.type==='deselect'){ setActive(null); }
+    if(cmd.type==='focus' && markers[cmd.id]){ setActive(cmd.id); map.flyTo(markers[cmd.id].getLatLng(), 16, {duration:0.9}); }
+  };
+  function initMap(){
+    if(typeof L==='undefined'){ return setTimeout(initMap,100); }
+    map = L.map('map',{zoomControl:false,attributionControl:true}).setView(me, 14);
+    L.tileLayer(DARK_TILES,{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+    L.marker(me,{icon:L.divIcon({className:'',html:pinHtml('#64EBE2','me'),iconSize:[44,44],iconAnchor:[22,22]}),zIndexOffset:1000}).addTo(map);
+    var restaurants = ${restaurantsJson};
+    restaurants.forEach(function(r){
+      var m = L.marker([r.lat,r.lng],{icon:L.divIcon({className:'',html:pinHtml(r.color),iconSize:[44,44],iconAnchor:[22,22]})}).addTo(map);
+      m.on('click',function(e){ L.DomEvent.stopPropagation(e); setActive(r.id); map.flyTo([r.lat,r.lng], Math.max(map.getZoom(),15), {duration:0.8}); send({type:'select',id:r.id}); });
+      markers[r.id] = m;
+    });
+    map.on('click',function(){ setActive(null); send({type:'deselect'}); });
+    setTimeout(function(){ map.invalidateSize(); }, 300);
+    send({type:'ready'});
+  }
+  if(document.readyState==='complete'){ initMap(); } else { window.addEventListener('load', initMap); }
+  </script></body></html>`;
+}
 
-      var map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 14);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
-        maxZoom: 19,
-      }).addTo(map);
-
-      var userIcon = L.divIcon({
-        className: '',
-        html: '<div style="width:18px;height:18px;border-radius:50%;background:#1a237e;border:3px solid #fff;box-shadow:0 2px 8px rgba(26,35,126,0.5);"></div>',
-        iconSize: [18,18], iconAnchor: [9,9],
-      });
-      L.marker([${lat}, ${lng}], { icon: userIcon })
-        .addTo(map)
-        .bindPopup('<b>Você está aqui</b>');
-
-      var restaurantIcon = L.divIcon({
-        className: '',
-        html: '<div style="width:32px;height:32px;border-radius:50%;background:#e53935;border:3px solid #fff;box-shadow:0 2px 8px rgba(229,57,53,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">🍽️</div>',
-        iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-18],
-      });
-
-      // Event delegation: handles clicks on .saiba-mais-btn inside any popup
-      document.addEventListener('click', function(e) {
-        var btn = e.target && (e.target.closest ? e.target.closest('.saiba-mais-btn') : null);
-        if (!btn && e.target && e.target.classList && e.target.classList.contains('saiba-mais-btn')) btn = e.target;
-        if (btn) {
-          var id = parseInt(btn.getAttribute('data-id'), 10);
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'openDetail', id: id }));
-          }
-        }
-      });
-
-      var restaurants = ${restaurantsJson};
-      restaurants.forEach(function(r) {
-        var instagramRow = r.instagram
-          ? '<div class="popup-row"><span class="popup-icon">📸</span><span>' + r.instagram + '</span></div>'
-          : '';
-
-        var queueHtml = '';
-        if (r.queue && r.queue.status !== 'CLOSED' && r.queue.max_tables > 0) {
-          var pct = Math.min(100, Math.round((r.queue.current_tables / r.queue.max_tables) * 100));
-          var barColor = pct < 40 ? '#43a047' : pct < 75 ? '#fb8c00' : '#e53935';
-          var badgeBg  = pct < 40 ? '#e8f5e9' : pct < 75 ? '#fff8e1' : '#ffebee';
-          var badgeFg  = pct < 40 ? '#2e7d32' : pct < 75 ? '#e65100' : '#b71c1c';
-          var badgeLbl = pct < 40 ? 'Baixo' : pct < 75 ? 'Médio' : 'Cheio';
-          var statusIcon = r.queue.status === 'OPEN' ? '🟢' : '⏸️';
-          queueHtml = '<div class="queue-section">'
-            + '<div class="queue-info-row">'
-            + '<span>' + statusIcon + ' Fila: <strong>' + pct + '%</strong></span>'
-            + '<span class="queue-badge" style="background:' + badgeBg + ';color:' + badgeFg + ';">' + badgeLbl + '</span>'
-            + '</div>'
-            + '<div class="queue-bar-track"><div class="queue-bar-fill" style="width:' + pct + '%;background:' + barColor + ';"></div></div>'
-            + '</div>';
-        } else if (r.queue && r.queue.status === 'CLOSED') {
-          queueHtml = '<div class="queue-section"><div style="font-size:11px;color:#c62828;font-weight:700;">🔒 Fila fechada</div></div>';
-        }
-
-        var popup = '<div class="popup-content">'
-          + '<div class="popup-name">' + r.name + '</div>'
-          + '<div class="popup-row"><span class="popup-icon">📍</span><span>' + r.address + '</span></div>'
-          + '<div class="popup-row"><span class="popup-icon">📞</span><span>' + r.phone + '</span></div>'
-          + instagramRow
-          + queueHtml
-          + '<button class="saiba-mais-btn" data-id="' + r.id + '" '
-          + 'style="margin-top:8px;width:100%;padding:7px 0;background:#3f51b5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">'
-          + 'Saiba mais</button>'
-          + '</div>';
-        L.marker([r.lat, r.lng], { icon: restaurantIcon })
-          .addTo(map)
-          .bindPopup(popup, { maxWidth: 240 });
-      });
-
-      // Fix blank map on resize/render
-      setTimeout(function() { map.invalidateSize(); }, 300);
-    }
-
-    // Start after DOM + scripts ready
-    if (document.readyState === 'complete') {
-      initMap();
-    } else {
-      window.addEventListener('load', initMap);
-    }
-  </script>
-</body>
-</html>`;
+/** Radar sweep shown while the GPS fix is being acquired. */
+function Radar() {
+  const sweep = useLoop(2200, { yoyo: false, easing: ease.linear });
+  const ping = useLoop(1600, { yoyo: false, easing: ease.out3 });
+  return (
+    <View style={styles.radar}>
+      {[1, 0.7, 0.4].map(k => <View key={k} style={[styles.radarRing, { width: 220 * k, height: 220 * k, borderRadius: 110 * k }]} />)}
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate: sweep.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }]}>
+        <LinearGradient colors={['rgba(100,235,226,0.45)', 'rgba(100,235,226,0)']} start={{ x: 0.5, y: 0.5 }} end={{ x: 1, y: 0 }} style={styles.radarBeam} />
+      </Animated.View>
+      <Animated.View
+        style={[styles.radarPing, {
+          opacity: ping.interpolate({ inputRange: [0, 1], outputRange: [0.8, 0] }),
+          transform: [{ scale: ping.interpolate({ inputRange: [0, 1], outputRange: [0.5, 3] }) }],
+        }]}
+      />
+      <View style={styles.radarDot} />
+    </View>
+  );
 }
 
 export default function MapScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const webViewRef = useRef<any>(null);
+  const mapRef = useRef<LeafletHandle>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [selected, setSelected] = useState<Restaurant | null>(null);
   const restaurantsRef = useRef<Restaurant[]>([]);
+  const card = useRef(new Animated.Value(0)).current;
+  const enter = useEntrance(3, { step: 120, delay: 200 });
 
   async function requestLocation() {
     setStatus('loading');
-    const { status: perm } = await Location.requestForegroundPermissionsAsync();
-    if (perm !== 'granted') { setStatus('denied'); return; }
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    setCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-    setStatus('ready');
+    try {
+      const { status: perm } = await Location.requestForegroundPermissionsAsync();
+      if (perm !== 'granted') { setStatus('denied'); return; }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      setStatus('ready');
+    } catch {
+      setStatus('denied');
+    }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { requestLocation(); }, []);
 
   useFocusEffect(
     useCallback(() => {
-      getPublicRestaurants().then((data) => {
+      getPublicRestaurants().then(data => {
         setRestaurants(data);
         restaurantsRef.current = data;
       }).catch(() => {});
-    }, [])
+    }, []),
   );
+
+  useEffect(() => {
+    if (selected) {
+      card.setValue(0);
+      springTo(card, 1, { bounce: 0.35, duration: 600 }).start();
+    }
+  }, [selected, card]);
+
+  function closeCard() {
+    tween(card, 0, { duration: 220, easing: ease.in3 }).start(() => setSelected(null));
+    mapRef.current?.command({ type: 'deselect' });
+  }
 
   function openSettings() {
     if (Platform.OS === 'ios') Linking.openURL('app-settings:');
     else Linking.openSettings();
   }
 
-  const restaurantsWithCoords = restaurants.filter(r => r.latitude && r.longitude);
-
+  const withCoords = useMemo(() => restaurants.filter(r => r.latitude && r.longitude), [restaurants]);
   const restaurantsJson = JSON.stringify(
-    restaurantsWithCoords.map(r => ({
-      id: r.id,
-      name: r.name,
-      address: r.address,
-      phone: r.contact_phone,
-      instagram: r.instagram ?? '',
-      lat: r.latitude,
-      lng: r.longitude,
-      queue: r.queue ?? null,
-    }))
+    withCoords.map(r => ({ id: r.id, lat: r.latitude, lng: r.longitude, color: occupancyOf(r.queue).color })),
   );
-
-  // key forces WebView to fully remount when location or restaurants change
-  const mapKey = coords ? `${coords.lat.toFixed(5)}-${coords.lng.toFixed(5)}-${restaurantsWithCoords.length}` : 'no-coords';
-
-  const mapHtml = coords ? buildMapHtml(coords.lat, coords.lng, restaurantsJson) : '';
+  const mapKey = coords ? `${coords.lat.toFixed(5)}-${coords.lng.toFixed(5)}-${withCoords.length}` : 'no-coords';
+  const mapHtml = useMemo(
+    () => (coords ? buildMapHtml(coords.lat, coords.lng, restaurantsJson) : ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapKey],
+  );
 
   if (status === 'loading') {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#1a237e" />
-        <Text style={styles.loadingText}>Obtendo localização...</Text>
-      </View>
+      <Aurora intensity="calm" sparkles={8}>
+        <View style={styles.center}>
+          <Radar />
+          <Text style={styles.loadingTitle}>Escaneando a área</Text>
+          <Text style={styles.loadingSub}>Obtendo sua localização…</Text>
+        </View>
+      </Aurora>
     );
   }
 
   if (status === 'denied') {
     return (
-      <View style={[styles.blockedContainer, { paddingTop: insets.top + 20 }]}>
-        <View style={styles.iconCircle}>
-          <MaterialIcons name="location-off" size={48} color="#9ca3af" />
+      <Aurora intensity="vivid">
+        <View style={[styles.blocked, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 120 }]}>
+          <Animated.View style={[styles.blockedIcon, enter(0)]}>
+            <MaterialIcons name="location-off" size={44} color={colors.cyan} />
+          </Animated.View>
+          <KineticText text="Localização bloqueada" highlight={[1]} accent={colors.danger} style={styles.blockedTitle} containerStyle={{ justifyContent: 'center' }} />
+          <Animated.Text style={[styles.blockedText, enter(1)]}>
+            Precisamos da sua localização para mostrar o mapa e os restaurantes próximos a você.
+          </Animated.Text>
+          <Animated.View style={[{ alignSelf: 'stretch', gap: 12 }, enter(2)]}>
+            <GradientButton title="Permitir localização" icon="my-location" onPress={requestLocation} />
+            <GradientButton title="Abrir configurações" variant="ghost" onPress={openSettings} />
+          </Animated.View>
         </View>
-        <Text style={styles.blockedTitle}>Localização bloqueada</Text>
-        <Text style={styles.blockedText}>
-          Precisamos da sua localização para mostrar o mapa e os restaurantes próximos a você.
-        </Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={requestLocation} activeOpacity={0.8}>
-          <MaterialIcons name="my-location" size={18} color="#fff" />
-          <Text style={styles.primaryBtnText}>Permitir localização</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={openSettings} activeOpacity={0.8}>
-          <Text style={styles.secondaryBtnText}>Abrir configurações</Text>
-        </TouchableOpacity>
-      </View>
+      </Aurora>
     );
   }
 
+  const occ = selected ? occupancyOf(selected.queue) : null;
+  const hasQueue = !!selected?.queue && selected.queue.status !== 'CLOSED' && selected.queue.max_tables > 0;
+
   return (
-    <View style={styles.mapContainer}>
-      <WebView
+    <View style={styles.root}>
+      <LeafletView
         key={mapKey}
-        ref={webViewRef}
-        source={{ html: mapHtml }}
-        style={styles.map}
-        originWhitelist={['*']}
-        javaScriptEnabled
-        domStorageEnabled
-        allowFileAccess
-        allowUniversalAccessFromFileURLs
-        mixedContentMode="always"
-        startInLoadingState
-        onMessage={(event) => {
-          try {
-            const msg = JSON.parse(event.nativeEvent.data);
-            if (msg.type === 'openDetail') {
-              const restaurant = restaurantsRef.current.find((r) => r.id === msg.id);
-              if (restaurant) navigation.navigate('RestaurantDetail', { restaurant });
-            }
-          } catch {}
+        ref={mapRef}
+        html={mapHtml}
+        style={StyleSheet.absoluteFill}
+        onMessage={msg => {
+          if (msg?.type === 'select') {
+            const r = restaurantsRef.current.find(x => x.id === msg.id);
+            if (r) setSelected(r);
+          } else if (msg?.type === 'deselect') {
+            if (selected) closeCard();
+          }
         }}
-        renderLoading={() => (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color="#1a237e" />
-          </View>
-        )}
       />
 
-      <View style={[styles.myLocationBadge, { top: insets.top + 12 }]}>
-        <MaterialIcons name="my-location" size={14} color="#1a237e" />
-        <Text style={styles.myLocationText}>Você está aqui</Text>
+      <LinearGradient colors={['rgba(10,6,23,0.85)', 'rgba(10,6,23,0)']} style={[styles.topShade, { height: insets.top + 90 }]} pointerEvents="none" />
+
+      <View style={[styles.topRow, { top: insets.top + 12 }]} pointerEvents="box-none">
+        <Glass strong style={styles.chip}>
+          <MaterialIcons name="my-location" size={14} color={colors.cyan} />
+          <Text style={styles.chipText}>Você está aqui</Text>
+        </Glass>
+        {withCoords.length > 0 && (
+          <Glass strong style={styles.chip}>
+            <MaterialIcons name="restaurant" size={14} color={colors.purple} />
+            <Text style={styles.chipText}>{withCoords.length} restaurante{withCoords.length !== 1 ? 's' : ''}</Text>
+          </Glass>
+        )}
       </View>
 
-      {restaurantsWithCoords.length > 0 && (
-        <View style={[styles.restaurantsBadge, { top: insets.top + 12 }]}>
-          <MaterialIcons name="restaurant" size={14} color="#e53935" />
-          <Text style={styles.restaurantsText}>{restaurantsWithCoords.length} restaurante{restaurantsWithCoords.length !== 1 ? 's' : ''}</Text>
+      <PressableScale
+        onPress={() => { mapRef.current?.command({ type: 'recenter' }); if (selected) closeCard(); }}
+        containerStyle={[styles.recenter, { bottom: insets.bottom + (selected ? 290 : 120) }]}
+        style={styles.recenterInner}
+        scaleTo={0.85}
+        accessibilityLabel="Centralizar no meu local"
+      >
+        <MaterialIcons name="gps-fixed" size={22} color={colors.cyan} />
+      </PressableScale>
+
+      {!selected && withCoords.length > 0 && (
+        <View style={[styles.legend, { bottom: insets.bottom + 120 }]} pointerEvents="none">
+          {(['low', 'medium', 'high'] as const).map(l => {
+            const t = occupancyTheme[l];
+            return (
+              <View key={l} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: t.color }]} />
+                <Text style={styles.legendText}>{t.label}</Text>
+              </View>
+            );
+          })}
         </View>
+      )}
+
+      {selected && occ && (
+        <Animated.View
+          style={[
+            styles.cardWrap,
+            {
+              bottom: insets.bottom + 108,
+              opacity: card,
+              transform: [
+                { translateY: card.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) },
+                { scale: card.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
+              ],
+            },
+          ]}
+        >
+          <Glass strong intensity={60} style={styles.card}>
+            <View style={styles.cardTop}>
+              <View style={styles.thumb}>
+                {selected.photo_url ? (
+                  <Image source={{ uri: selected.photo_url }} style={StyleSheet.absoluteFill} />
+                ) : (
+                  <LinearGradient colors={[colors.plum, colors.purple]} style={[StyleSheet.absoluteFill, styles.thumbFallback]}>
+                    <Text style={styles.thumbText}>{initialsOf(selected.name)}</Text>
+                  </LinearGradient>
+                )}
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={styles.cardName} numberOfLines={1}>{selected.name}</Text>
+                <View style={styles.meta}>
+                  <MaterialIcons name="place" size={12} color={colors.textHint} />
+                  <Text style={styles.metaText} numberOfLines={1}>{selected.address}</Text>
+                </View>
+                <View style={styles.meta}>
+                  <MaterialIcons name="call" size={12} color={colors.textHint} />
+                  <Text style={styles.metaText} numberOfLines={1}>{selected.contact_phone}</Text>
+                </View>
+                {!!selected.instagram && (
+                  <View style={styles.meta}>
+                    <MaterialIcons name="alternate-email" size={12} color={colors.textHint} />
+                    <Text style={styles.metaText} numberOfLines={1}>{selected.instagram.replace(/^@/, '')}</Text>
+                  </View>
+                )}
+                {selected.queue?.status === 'CLOSED' && (
+                  <View style={styles.meta}>
+                    <MaterialIcons name="lock" size={12} color={colors.danger} />
+                    <Text style={[styles.metaText, { color: colors.danger }]}>Fila fechada</Text>
+                  </View>
+                )}
+              </View>
+              {hasQueue && <OccupancyRing key={selected.id} pct={occ.pct} level={occ.level} size={64} stroke={6} live={false} delay={150} />}
+              <PressableScale onPress={closeCard} containerStyle={styles.closePos} style={styles.close} scaleTo={0.8} accessibilityLabel="Fechar">
+                <MaterialIcons name="close" size={16} color={colors.text} />
+              </PressableScale>
+            </View>
+            <GradientButton
+              title="Saiba mais"
+              iconRight="arrow-forward"
+              size="md"
+              onPress={() => navigation.navigate('RestaurantDetail', { restaurant: selected })}
+            />
+          </Glass>
+        </Animated.View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4f5fb',
-  },
-  loadingText: { marginTop: 12, fontSize: 14, color: '#6b7280' },
+  root: { flex: 1, backgroundColor: colors.void },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 80 },
+  loadingTitle: { fontFamily: fonts.display, fontSize: 22, color: colors.text, marginTop: 30 },
+  loadingSub: { fontFamily: fonts.body, fontSize: 14, color: colors.textSub },
+  radar: { width: 220, height: 220, alignItems: 'center', justifyContent: 'center', borderRadius: 110, overflow: 'hidden' },
+  radarRing: { position: 'absolute', borderWidth: 1, borderColor: 'rgba(100,235,226,0.25)' },
+  radarBeam: { position: 'absolute', left: 110, top: 0, width: 110, height: 110 },
+  radarPing: { position: 'absolute', width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: colors.cyan },
+  radarDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.cyan, borderWidth: 3, borderColor: '#fff' },
 
-  blockedContainer: {
-    flex: 1, backgroundColor: '#f4f5fb',
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 32, paddingBottom: 80,
+  blocked: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 16 },
+  blockedIcon: {
+    width: 96, height: 96, borderRadius: 32, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(100,235,226,0.1)', borderWidth: 1, borderColor: 'rgba(100,235,226,0.35)',
   },
-  iconCircle: {
-    width: 96, height: 96, borderRadius: 48,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-  },
-  blockedTitle: { fontSize: 22, fontWeight: '700', color: '#1a237e', marginBottom: 12, textAlign: 'center' },
-  blockedText: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#1a237e',
-    paddingVertical: 14, paddingHorizontal: 28,
-    borderRadius: 14, marginBottom: 12, width: '100%', justifyContent: 'center',
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  secondaryBtn: {
-    paddingVertical: 12, paddingHorizontal: 28,
-    borderRadius: 14, borderWidth: 1.5, borderColor: '#d1d5db',
-    width: '100%', alignItems: 'center',
-  },
-  secondaryBtnText: { color: '#6b7280', fontWeight: '600', fontSize: 14 },
+  blockedTitle: { fontFamily: fonts.display, fontSize: 32, letterSpacing: -1.2, color: colors.text, textAlign: 'center' },
+  blockedText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.textSub, textAlign: 'center', marginBottom: 12 },
 
-  mapContainer: { flex: 1 },
-  map: { flex: 1 },
-
-  myLocationBadge: {
-    position: 'absolute', left: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#fff',
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 4, elevation: 4,
+  topShade: { position: 'absolute', top: 0, left: 0, right: 0 },
+  topRow: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99 },
+  chipText: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.text },
+  recenter: { position: 'absolute', right: 16 },
+  recenterInner: {
+    width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(19,12,46,0.92)', borderWidth: 1, borderColor: colors.glassLineStrong,
   },
-  myLocationText: { fontSize: 12, fontWeight: '600', color: '#1a237e' },
-
-  restaurantsBadge: {
-    position: 'absolute', right: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#fff',
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 4, elevation: 4,
+  legend: {
+    position: 'absolute', left: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 99, backgroundColor: 'rgba(19,12,46,0.85)', borderWidth: 1, borderColor: colors.glassLine,
   },
-  restaurantsText: { fontSize: 12, fontWeight: '600', color: '#e53935' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontFamily: fonts.bodySemi, fontSize: 11, color: colors.textSub },
+
+  cardWrap: { position: 'absolute', left: 14, right: 14, alignItems: 'center' },
+  card: { width: '100%', maxWidth: 480, padding: 14, borderRadius: 28, gap: 14 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  thumb: { width: 64, height: 64, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.night },
+  thumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  thumbText: { fontFamily: fonts.display, fontSize: 22, color: '#fff' },
+  cardName: { fontFamily: fonts.displaySemi, fontSize: 17, color: colors.text, letterSpacing: -0.3 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { flexShrink: 1, fontFamily: fonts.body, fontSize: 12, color: colors.textSub },
+  closePos: { position: 'absolute', top: -4, right: -4 },
+  close: {
+    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.glassStrong,
+  },
 });
