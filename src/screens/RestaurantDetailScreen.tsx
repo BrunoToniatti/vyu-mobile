@@ -151,7 +151,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
     function init(){ if(typeof L==='undefined'){return setTimeout(init,100)}
       var map=L.map('map',{zoomControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false,attributionControl:false})
         .setView([${restaurant.latitude},${restaurant.longitude}],16);
-      L.tileLayer(DARK_TILES,{maxZoom:19,subdomains:'abcd'}).addTo(map);
+      L.tileLayer(DARK_TILES,{maxZoom:19}).addTo(map);
       L.marker([${restaurant.latitude},${restaurant.longitude}],{icon:L.divIcon({className:'',html:pinHtml('${occ.color}','active'),iconSize:[44,44],iconAnchor:[22,22]})}).addTo(map);
       setTimeout(function(){map.invalidateSize()},300);
     }

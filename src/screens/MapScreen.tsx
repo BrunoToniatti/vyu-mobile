@@ -45,7 +45,7 @@ function buildMapHtml(lat: number, lng: number, restaurantsJson: string) {
   function initMap(){
     if(typeof L==='undefined'){ return setTimeout(initMap,100); }
     map = L.map('map',{zoomControl:false,attributionControl:true}).setView(me, 14);
-    L.tileLayer(DARK_TILES,{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+    L.tileLayer(DARK_TILES,{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
     L.marker(me,{icon:L.divIcon({className:'',html:pinHtml('#64EBE2','me'),iconSize:[44,44],iconAnchor:[22,22]}),zIndexOffset:1000}).addTo(map);
     var restaurants = ${restaurantsJson};
     restaurants.forEach(function(r){

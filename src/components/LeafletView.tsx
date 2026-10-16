@@ -92,6 +92,8 @@ export const LEAFLET_HEAD = `
   *{margin:0;padding:0;box-sizing:border-box}
   html,body,#map{width:100%;height:100%;background:#0A0617}
   .leaflet-container{background:#0A0617;font-family:-apple-system,Inter,sans-serif}
+  /* keyless OSM tiles, recoloured to the dark VYU look */
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(200deg) saturate(.55) brightness(.82) contrast(.92)}
   .leaflet-control-attribution{background:rgba(10,6,23,.6)!important;color:rgba(255,255,255,.4)!important;font-size:9px}
   .leaflet-control-attribution a{color:rgba(100,235,226,.6)!important}
   .pin{position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center}
@@ -106,7 +108,7 @@ export const LEAFLET_HEAD = `
   function send(o){var s=JSON.stringify(o);if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(s)}else if(window.parent&&window.parent!==window){window.parent.postMessage(s,'*')}}
   window.addEventListener('message',function(e){try{var d=typeof e.data==='string'?JSON.parse(e.data):e.data;window.handleCommand&&window.handleCommand(d)}catch(_){}});
   function pinHtml(color,extra){return '<div class="pin '+(extra||'')+'" style="--c:'+color+'"><div class="wave"></div><div class="wave b"></div><div class="core"></div></div>'}
-  var DARK_TILES='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  var DARK_TILES='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 </script>`;
 
 const styles = StyleSheet.create({
