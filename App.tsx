@@ -12,7 +12,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useFonts } from 'expo-font';
 import {
   SpaceGrotesk_500Medium,
   SpaceGrotesk_600SemiBold,
@@ -38,6 +37,7 @@ import { DialogProvider } from './src/components/Dialog';
 import { isAuthenticated } from './src/services/auth';
 import { Restaurant } from './src/types';
 import { colors, fonts } from './src/theme';
+import { fontApi } from './src/theme/fontSupport';
 import { ease, springTo, tween } from './src/motion';
 
 export type RootStackParamList = {
@@ -167,19 +167,25 @@ function Splash({ leaving, onGone }: { leaving: boolean; onGone: () => void }) {
   );
 }
 
+const FONT_MAP = {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+};
+const loadFonts = fontApi?.useFonts;
+const useAppFonts: () => [boolean, Error | null] = loadFonts
+  ? () => loadFonts(FONT_MAP)
+  : () => [true, null];
+
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList | null>(null);
   const [minTimeDone, setMinTimeDone] = useState(false);
   const [splashGone, setSplashGone] = useState(false);
-  const [fontsLoaded, fontError] = useFonts({
-    SpaceGrotesk_500Medium,
-    SpaceGrotesk_600SemiBold,
-    SpaceGrotesk_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
+  const [fontsLoaded, fontError] = useAppFonts();
 
   useEffect(() => {
     async function init() {

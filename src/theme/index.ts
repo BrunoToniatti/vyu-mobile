@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { RestaurantQueue } from '../types';
+import { customFontsAvailable } from './fontSupport';
 
 export const colors = {
   void: '#0A0617',
@@ -38,7 +39,7 @@ export const gradients = {
   shade: ['rgba(10,6,23,0)', 'rgba(10,6,23,0.55)', 'rgba(10,6,23,0.96)'] as const,
 };
 
-export const fonts = {
+const customFonts = {
   display: 'SpaceGrotesk_700Bold',
   displaySemi: 'SpaceGrotesk_600SemiBold',
   displayMed: 'SpaceGrotesk_500Medium',
@@ -46,6 +47,15 @@ export const fonts = {
   bodyMed: 'Inter_500Medium',
   bodySemi: 'Inter_600SemiBold',
   bodyBold: 'Inter_700Bold',
+};
+const systemFont = Platform.select({ ios: 'System', android: 'sans-serif', default: 'system-ui' }) as string;
+const systemFonts = {
+  display: systemFont, displaySemi: systemFont, displayMed: systemFont, body: systemFont,
+  bodyMed: systemFont, bodySemi: systemFont, bodyBold: systemFont,
+};
+
+export const fonts = {
+  ...(customFontsAvailable ? customFonts : systemFonts),
   mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) as string,
 };
 
