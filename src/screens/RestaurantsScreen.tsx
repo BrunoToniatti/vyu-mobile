@@ -10,7 +10,9 @@ import { RootStackParamList, MainTabParamList } from '../../App';
 import { getPublicRestaurants, getMyReservations, MyReservation } from '../services/restaurant';
 import { getStoredUser, logout } from '../services/auth';
 import { getAllCategories, getUserPreferences, CategoryItem, Category } from '../services/category';
-import { Restaurant, UserApp } from '../types';
+import { Moment, Restaurant, UserApp } from '../types';
+import { getMomentFeed } from '../services/moment';
+import MomentTile from '../components/MomentTile';
 import Aurora from '../components/Aurora';
 import Avatar from '../components/Avatar';
 import KineticText from '../components/KineticText';
@@ -148,6 +150,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
   const [all, setAll] = useState<Restaurant[]>([]);
   const [upcoming, setUpcoming] = useState<MyReservation[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [moments, setMoments] = useState<Moment[]>([]);
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const carouselRef = useRef<ScrollView>(null);
@@ -173,6 +176,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
 
   async function fetchData() {
     try {
+      getMomentFeed().then(setMoments).catch(() => {});
       const [u, data, prefs, cats, reservations] = await Promise.all([
         getStoredUser(),
         getPublicRestaurants(),
@@ -354,6 +358,26 @@ export default function RestaurantsScreen({ navigation }: Props) {
           )}
         </Animated.View>
 
+        {/* Moments feed */}
+        <Animated.View style={enter(3)}>
+          <View style={[styles.sectionHead, styles.pad]}>
+            <View>
+              <Text style={styles.eyebrow}>da galera</Text>
+              <Text style={styles.sectionTitle}>Momentos</Text>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.momentsRow}>
+            <PressableScale onPress={() => navigation.navigate('NewMoment')} scaleTo={0.94} feedback="press" style={styles.addMoment} accessibilityLabel="Registrar momento">
+              <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              <View style={styles.addIcon}><MaterialIcons name="photo-camera" size={26} color={colors.deep} /></View>
+              <Text style={styles.addTitle}>Registrar{'\n'}momento</Text>
+            </PressableScale>
+            {moments.map(m => (
+              <MomentTile key={m.id} moment={m} showPlace width={150} height={200} onPress={() => navigation.navigate('Moment', { moment: m })} />
+            ))}
+          </ScrollView>
+        </Animated.View>
+
         {/* Ticker band */}
         <Animated.View style={[styles.bandWrap, enter(3)]}>
           <View style={styles.bandTilt}>
@@ -462,6 +486,10 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 2, marginTop: 12 },
   dot: { width: 22, height: 6, borderRadius: 3, backgroundColor: colors.cyan },
 
+  momentsRow: { gap: 12, paddingHorizontal: 20 },
+  addMoment: { width: 150, height: 200, borderRadius: 24, overflow: 'hidden', padding: 16, justifyContent: 'space-between' },
+  addIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  addTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 22, color: '#fff', letterSpacing: -0.5 },
   bandWrap: { marginTop: 34, marginBottom: 6, overflow: 'hidden', paddingVertical: 14 },
   bandTilt: { transform: [{ rotate: '-3deg' }], marginHorizontal: -30 },
   band: { paddingVertical: 12 },

@@ -29,6 +29,8 @@ import MapScreen from './src/screens/MapScreen';
 import RestaurantDetailScreen from './src/screens/RestaurantDetailScreen';
 import RestaurantListScreen from './src/screens/RestaurantListScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import NewMomentScreen from './src/screens/NewMomentScreen';
+import MomentScreen from './src/screens/MomentScreen';
 import FloatingTabBar from './src/components/FloatingTabBar';
 import Aurora from './src/components/Aurora';
 import VyuLogo from './src/components/VyuLogo';
@@ -37,7 +39,7 @@ import { DialogProvider } from './src/components/Dialog';
 import { isAuthenticated } from './src/services/auth';
 import api from './src/services/api';
 import { navigationRef } from './src/services/session';
-import { Restaurant } from './src/types';
+import { Moment, Restaurant } from './src/types';
 import { colors, fonts } from './src/theme';
 import { fontApi } from './src/theme/fontSupport';
 import { ease, springTo, tween } from './src/motion';
@@ -51,6 +53,8 @@ export type RootStackParamList = {
   RestaurantList: undefined;
   RestaurantDetail: { restaurant: Restaurant };
   Chat: { restaurant: Restaurant };
+  NewMoment: { restaurant?: Restaurant } | undefined;
+  Moment: { moment: Moment };
 };
 
 export type MainTabParamList = {
@@ -238,6 +242,8 @@ export default function App() {
                   <Stack.Screen name="RestaurantList" component={RestaurantListScreen} />
                   <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} options={portalTransition} />
                   <Stack.Screen name="Chat" component={ChatScreen} />
+                  <Stack.Screen name="NewMoment" component={NewMomentScreen} options={portalTransition} />
+                  <Stack.Screen name="Moment" component={MomentScreen} />
                 </Stack.Navigator>
               </NavigationContainer>
             )}

@@ -1,13 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Linking, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Image, Linking, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RouteProp } from '@react-navigation/native';
+import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
 import { getRestaurantReviews } from '../services/restaurant';
-import { Review, RestaurantQueue } from '../types';
+import { getRestaurantMoments } from '../services/moment';
+import MomentTile from '../components/MomentTile';
+import { Moment, Review, RestaurantQueue } from '../types';
 import Aurora from '../components/Aurora';
 import Glass from '../components/Glass';
 import GradientButton from '../components/GradientButton';
@@ -128,6 +130,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   const burst = useBurst();
   const HERO = Math.min(420, W * 1.05);
 
+  const [moments, setMoments] = useState<Moment[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [showReview, setShowReview] = useState(false);
@@ -142,6 +145,13 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       .catch(() => {})
       .finally(() => setLoadingReviews(false));
   }, [restaurant.id]);
+
+  // refreshed every time the screen is focused, so a just-posted photo shows up when coming back
+  useFocusEffect(
+    useCallback(() => {
+      getRestaurantMoments(restaurant.id).then(setMoments).catch(() => {});
+    }, [restaurant.id]),
+  );
 
   const hasCoords = !!(restaurant.latitude && restaurant.longitude);
   const occ = occupancyOf(restaurant.queue);
@@ -296,8 +306,34 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
             </Animated.View>
           )}
 
-          {/* Reviews */}
+          {/* Moments gallery */}
           <Animated.View style={[styles.block, enter(3)]}>
+            <View style={styles.reviewsHead}>
+              <View>
+                <Text style={styles.eyebrow}>galeria</Text>
+                <Text style={styles.sectionTitle}>Momentos{moments.length ? ` · ${moments.length}` : ''}</Text>
+              </View>
+              <GradientButton title="Postar foto" icon="photo-camera" size="sm" variant="ghost" onPress={() => navigation.navigate('NewMoment', { restaurant })} />
+            </View>
+            {moments.length === 0 ? (
+              <PressableScale onPress={() => navigation.navigate('NewMoment', { restaurant })} scaleTo={0.97}>
+                <Glass style={styles.empty}>
+                  <MaterialIcons name="add-a-photo" size={30} color={colors.cyan} />
+                  <Text style={styles.emptyTitle}>Nenhum momento ainda</Text>
+                  <Text style={styles.emptySub}>Esteve aqui? Registre o primeiro!</Text>
+                </Glass>
+              </PressableScale>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 18 }} style={{ marginHorizontal: -18, paddingLeft: 18 }}>
+                {moments.map(m => (
+                  <MomentTile key={m.id} moment={m} width={150} height={200} onPress={() => navigation.navigate('Moment', { moment: m })} />
+                ))}
+              </ScrollView>
+            )}
+          </Animated.View>
+
+          {/* Reviews */}
+          <Animated.View style={[styles.block, enter(4)]}>
             <View style={styles.reviewsHead}>
               <View>
                 <Text style={styles.eyebrow}>quem foi, conta</Text>

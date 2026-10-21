@@ -64,3 +64,30 @@ export interface Review {
   manager_response?: string | null;
   created_at: string;
 }
+
+export interface Moment {
+  id: number;
+  restaurant_id: number;
+  restaurant_name: string;
+  user_id: number;
+  user_name: string;
+  user_photo_url?: string | null;
+  photo_url: string;
+  caption: string;
+  is_pinned: boolean;
+  liked_by_restaurant: boolean;
+  like_count: number;
+  comment_count: number;
+  liked_by_me: boolean;
+  created_at: string;
+}
+
+export interface MomentComment {
+  id: number;
+  user_id: number | null;
+  author_name: string;
+  author_photo_url?: string | null;
+  is_restaurant: boolean;
+  text: string;
+  created_at: string;
+}
