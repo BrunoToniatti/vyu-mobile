@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, FlatList, Image, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -16,11 +16,70 @@ import GradientButton from '../components/GradientButton';
 import PressableScale from '../components/PressableScale';
 import KineticText from '../components/KineticText';
 import OccupancyRing from '../components/OccupancyRing';
+import OccupancyBar from '../components/OccupancyBar';
 import LeafletView, { LEAFLET_HEAD, LeafletHandle } from '../components/LeafletView';
-import { colors, fonts, initialsOf, occupancyOf, occupancyTheme } from '../theme';
+import { colors, fonts, gradients, initialsOf, occupancyOf, occupancyTheme } from '../theme';
 import { ease, springTo, tween, useEntrance, useLoop } from '../motion';
 
 type Status = 'loading' | 'denied' | 'ready';
+type ViewMode = 'map' | 'list';
+
+function distanceKm(a: { lat: number; lng: number }, lat?: number | null, lng?: number | null) {
+  if (lat == null || lng == null) return null;
+  const R = 6371, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(lat - a.lat), dLng = rad(lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const formatKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1).replace('.', ',')} km`);
+
+function ListRow({ item, index, km, onPress }: { item: Restaurant; index: number; km: number | null; onPress: () => void }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(t, { toValue: 1, duration: 700, delay: Math.min(index, 8) * 60, easing: ease.out4, useNativeDriver: true }).start();
+  }, [t, index]);
+  const occ = occupancyOf(item.queue);
+  const showQueue = !!item.queue && item.queue.status !== 'CLOSED' && item.queue.max_tables > 0;
+  return (
+    <Animated.View style={{ opacity: t, transform: [{ translateY: t.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+      <PressableScale onPress={onPress} scaleTo={0.97}>
+        <Glass style={styles.row}>
+          <View style={styles.rowTop}>
+            <View style={styles.thumb}>
+              {item.photo_url ? (
+                <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFill} />
+              ) : (
+                <LinearGradient colors={[colors.plum, colors.purple]} style={[StyleSheet.absoluteFill, styles.thumbFallback]}>
+                  <Text style={styles.thumbText}>{initialsOf(item.name)}</Text>
+                </LinearGradient>
+              )}
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+              <View style={styles.meta}>
+                <MaterialIcons name="place" size={12} color={colors.textHint} />
+                <Text style={styles.metaText} numberOfLines={1}>{item.address}</Text>
+              </View>
+              {item.queue?.status === 'CLOSED' && (
+                <View style={styles.meta}>
+                  <MaterialIcons name="lock" size={12} color={colors.danger} />
+                  <Text style={[styles.metaText, { color: colors.danger }]}>Fila fechada</Text>
+                </View>
+              )}
+            </View>
+            {km !== null && (
+              <View style={styles.dist}>
+                <MaterialIcons name="near-me" size={12} color={colors.cyan} />
+                <Text style={styles.distText}>{formatKm(km)}</Text>
+              </View>
+            )}
+          </View>
+          {showQueue && <OccupancyBar pct={occ.pct} level={occ.level} delay={250 + Math.min(index, 8) * 60} />}
+        </Glass>
+      </PressableScale>
+    </Animated.View>
+  );
+}
 type Props = {
   navigation: CompositeNavigationProp<
     BottomTabNavigationProp<MainTabParamList, 'Map'>,
@@ -89,6 +148,8 @@ export default function MapScreen({ navigation }: Props) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [mode, setMode] = useState<ViewMode>('map');
+  const swap = useRef(new Animated.Value(0)).current;
   const restaurantsRef = useRef<Restaurant[]>([]);
   const card = useRef(new Animated.Value(0)).current;
   const enter = useEntrance(3, { step: 120, delay: 200 });
@@ -130,10 +191,22 @@ export default function MapScreen({ navigation }: Props) {
     mapRef.current?.command({ type: 'deselect' });
   }
 
+  function switchMode(next: ViewMode) {
+    if (next === mode) return;
+    if (selected) { setSelected(null); mapRef.current?.command({ type: 'deselect' }); }
+    setMode(next);
+    springTo(swap, next === 'list' ? 1 : 0, { bounce: 0.2, duration: 520 }).start();
+  }
+
   function openSettings() {
     if (Platform.OS === 'ios') Linking.openURL('app-settings:');
     else Linking.openSettings();
   }
+
+  const sortedList = useMemo(() => {
+    const rows = restaurants.map(r => ({ r, km: coords ? distanceKm(coords, r.latitude, r.longitude) : null }));
+    return rows.sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity));
+  }, [restaurants, coords]);
 
   const withCoords = useMemo(() => restaurants.filter(r => r.latitude && r.longitude), [restaurants]);
   const restaurantsJson = JSON.stringify(
@@ -205,14 +278,54 @@ export default function MapScreen({ navigation }: Props) {
           <MaterialIcons name="my-location" size={14} color={colors.cyan} />
           <Text style={styles.chipText}>Você está aqui</Text>
         </Glass>
-        {withCoords.length > 0 && (
-          <Glass strong style={styles.chip}>
-            <MaterialIcons name="restaurant" size={14} color={colors.purple} />
-            <Text style={styles.chipText}>{withCoords.length} restaurante{withCoords.length !== 1 ? 's' : ''}</Text>
-          </Glass>
-        )}
+        <Glass strong style={styles.toggle}>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.togglePill, { transform: [{ translateX: swap.interpolate({ inputRange: [0, 1], outputRange: [0, 44] }) }] }]}
+          >
+            <LinearGradient colors={gradients.primaryShort} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+          </Animated.View>
+          <PressableScale onPress={() => switchMode('map')} style={styles.toggleBtn} scaleTo={0.85} feedback="select" accessibilityLabel="Ver mapa">
+            <MaterialIcons name="map" size={20} color={mode === 'map' ? '#fff' : colors.textHint} />
+          </PressableScale>
+          <PressableScale onPress={() => switchMode('list')} style={styles.toggleBtn} scaleTo={0.85} feedback="select" accessibilityLabel="Ver lista">
+            <MaterialIcons name="view-list" size={20} color={mode === 'list' ? '#fff' : colors.textHint} />
+          </PressableScale>
+        </Glass>
       </View>
 
+      <Animated.View
+        pointerEvents={mode === 'list' ? 'auto' : 'none'}
+        style={[
+          StyleSheet.absoluteFill,
+          { opacity: swap, transform: [{ translateY: swap.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] },
+        ]}
+      >
+        <Aurora intensity="calm" sparkles={6}>
+          <FlatList
+            data={sortedList}
+            keyExtractor={x => String(x.r.id)}
+            renderItem={({ item, index }) => (
+              <ListRow item={item.r} index={index} km={item.km} onPress={() => navigation.navigate('RestaurantDetail', { restaurant: item.r })} />
+            )}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            ListHeaderComponent={
+              <View style={{ marginBottom: 14 }}>
+                <Text style={styles.listEyebrow}>perto de você</Text>
+                <Text style={styles.listTitle}>{sortedList.length} restaurante{sortedList.length !== 1 ? 's' : ''}</Text>
+              </View>
+            }
+            ListEmptyComponent={<Text style={styles.listEmpty}>Nenhum restaurante disponível.</Text>}
+            contentContainerStyle={{ paddingTop: insets.top + 76, paddingHorizontal: 16, paddingBottom: insets.bottom + 130 }}
+            showsVerticalScrollIndicator={false}
+          />
+        </Aurora>
+        <View style={[styles.topFade, { height: insets.top + 70 }]} pointerEvents="none">
+          <LinearGradient colors={['rgba(10,6,23,0.95)', 'rgba(10,6,23,0)']} style={StyleSheet.absoluteFill} />
+        </View>
+      </Animated.View>
+
+      {mode === 'map' && (
       <PressableScale
         onPress={() => { mapRef.current?.command({ type: 'recenter' }); if (selected) closeCard(); }}
         containerStyle={[styles.recenter, { bottom: insets.bottom + (selected ? 290 : 120) }]}
@@ -222,8 +335,9 @@ export default function MapScreen({ navigation }: Props) {
       >
         <MaterialIcons name="gps-fixed" size={22} color={colors.cyan} />
       </PressableScale>
+      )}
 
-      {!selected && withCoords.length > 0 && (
+      {mode === 'map' && !selected && withCoords.length > 0 && (
         <View style={[styles.legend, { bottom: insets.bottom + 120 }]} pointerEvents="none">
           {(['low', 'medium', 'high'] as const).map(l => {
             const t = occupancyTheme[l];
@@ -237,7 +351,7 @@ export default function MapScreen({ navigation }: Props) {
         </View>
       )}
 
-      {selected && occ && (
+      {mode === 'map' && selected && occ && (
         <Animated.View
           style={[
             styles.cardWrap,
@@ -323,7 +437,18 @@ const styles = StyleSheet.create({
   blockedText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.textSub, textAlign: 'center', marginBottom: 12 },
 
   topShade: { position: 'absolute', top: 0, left: 0, right: 0 },
-  topRow: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between' },
+  topRow: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 },
+  toggle: { flexDirection: 'row', padding: 4, borderRadius: 99, width: 96, height: 48 },
+  togglePill: { position: 'absolute', top: 4, left: 4, width: 40, height: 40, borderRadius: 20, overflow: 'hidden' },
+  toggleBtn: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center' },
+  topFade: { position: 'absolute', top: 0, left: 0, right: 0 },
+  row: { padding: 14, borderRadius: 24, gap: 12 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dist: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 99, backgroundColor: 'rgba(100,235,226,0.1)' },
+  distText: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.cyan },
+  listEyebrow: { fontFamily: fonts.bodyBold, fontSize: 10, letterSpacing: 2.2, color: colors.cyan, textTransform: 'uppercase' },
+  listTitle: { fontFamily: fonts.display, fontSize: 28, color: colors.text, letterSpacing: -0.8, marginTop: 2 },
+  listEmpty: { fontFamily: fonts.bodyMed, fontSize: 14, color: colors.textHint, textAlign: 'center', paddingVertical: 40 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99 },
   chipText: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.text },
   recenter: { position: 'absolute', right: 16 },
