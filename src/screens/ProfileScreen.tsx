@@ -260,20 +260,33 @@ export default function ProfileScreen({ navigation }: Props) {
   }
 
   async function handleSave() {
+    if (editMode && (!firstName.trim() || !lastName.trim())) {
+      ui.toast('Preencha nome e sobrenome.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       await saveUserPreferences(Array.from(selected));
       if (editMode && user) {
-        const rawPhone = stripPhoneMask(phone);
-        await api.patch('/users/me/', { first_name: firstName, last_name: lastName, phone_number: rawPhone });
-        const updated = { ...user, first_name: firstName, last_name: lastName, phone_number: rawPhone };
+        // the backend only accepts PUT on /users/me/ (PATCH answers 405)
+        const res = await api.put('/users/me/', {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone_number: stripPhoneMask(phone),
+        });
+        const updated: UserApp = { ...user, ...(res.data?.data ?? {}) };
         await AsyncStorage.setItem('user', JSON.stringify(updated));
         setUser(updated);
+        setFirstName(updated.first_name);
+        setLastName(updated.last_name);
+        setPhone(applyPhoneMask(updated.phone_number));
       }
       setEditMode(false);
       ui.alert({ tone: 'success', title: 'Salvo!', message: 'Perfil atualizado com sucesso.' });
-    } catch {
-      ui.alert({ tone: 'danger', title: 'Não salvou', message: 'Não foi possível salvar as alterações.' });
+    } catch (err: any) {
+      const errors = err?.response?.data?.errors;
+      const detail = errors && typeof errors === 'object' ? Object.values(errors).flat().join(' ') : null;
+      ui.alert({ tone: 'danger', title: 'Não salvou', message: detail || 'Não foi possível salvar as alterações.' });
     } finally {
       setSaving(false);
     }
