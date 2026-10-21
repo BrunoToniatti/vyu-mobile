@@ -35,6 +35,8 @@ import VyuLogo from './src/components/VyuLogo';
 import { BurstProvider } from './src/components/Burst';
 import { DialogProvider } from './src/components/Dialog';
 import { isAuthenticated } from './src/services/auth';
+import api from './src/services/api';
+import { navigationRef } from './src/services/session';
 import { Restaurant } from './src/types';
 import { colors, fonts } from './src/theme';
 import { fontApi } from './src/theme/fontSupport';
@@ -212,7 +214,14 @@ export default function App() {
         <BurstProvider>
           <DialogProvider>
             {ready && (
-              <NavigationContainer theme={navTheme}>
+              <NavigationContainer
+                theme={navTheme}
+                ref={navigationRef}
+                onReady={() => {
+                  // validate the saved session right away; a 401 is handled by the api interceptor
+                  if (initialRoute !== 'Login') api.get('/users/me/preferences/').catch(() => {});
+                }}
+              >
                 <Stack.Navigator
                   initialRouteName={initialRoute!}
                   screenOptions={{

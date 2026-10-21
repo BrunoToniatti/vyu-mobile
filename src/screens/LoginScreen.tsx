@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 import { loginUser } from '../services/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SESSION_EXPIRED_KEY } from '../services/session';
 import Aurora from '../components/Aurora';
 import VyuLogo from '../components/VyuLogo';
 import KineticText from '../components/KineticText';
@@ -28,6 +30,15 @@ export default function LoginScreen({ navigation }: Props) {
   const passwordRef = useRef<TextInput>(null);
   const jolt = useRef(new Animated.Value(0)).current;
   const enter = useEntrance(5, { step: 90, delay: 450 });
+
+  useEffect(() => {
+    AsyncStorage.getItem(SESSION_EXPIRED_KEY).then(flag => {
+      if (!flag) return;
+      AsyncStorage.removeItem(SESSION_EXPIRED_KEY);
+      setTimeout(() => ui.toast('Sua sessão expirou. Entre novamente.', 'info'), 700);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleLogin() {
     const next = {
