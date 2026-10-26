@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TextInputInstance, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,7 +52,7 @@ export default function RegisterScreen({ navigation }: Props) {
   const shift = useRef(new Animated.Value(0)).current;
   const progress = useRef(new Animated.Value(1 / 3)).current;
   const jolt = useRef(new Animated.Value(0)).current;
-  const refs = useRef<Partial<Record<FormKey, TextInput | null>>>({}).current;
+  const refs = useRef<Partial<Record<FormKey, TextInputInstance | null>>>({}).current;
   const enter = useEntrance(3, { step: 90, delay: 300 });
 
   function update(field: FormKey, value: string) {

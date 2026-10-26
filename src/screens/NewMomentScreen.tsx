@@ -102,7 +102,7 @@ export default function NewMomentScreen({ navigation, route }: Props) {
       return;
     }
     const opts: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 5],
       quality: 0.8,

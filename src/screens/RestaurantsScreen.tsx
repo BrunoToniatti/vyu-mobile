@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Image, RefreshControl, ScrollView, ScrollViewInstance, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,7 +153,7 @@ export default function RestaurantsScreen({ navigation }: Props) {
   const [moments, setMoments] = useState<Moment[]>([]);
 
   const scrollX = useRef(new Animated.Value(0)).current;
-  const carouselRef = useRef<ScrollView>(null);
+  const carouselRef = useRef<ScrollViewInstance>(null);
   const carouselIdx = useRef(0);
   const carouselTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const enter = useEntrance(6, { step: 90, delay: 150 });

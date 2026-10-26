@@ -109,7 +109,7 @@ export function useLoop(duration = 3000, o: { easing?: EaseFn; delay?: number; y
           Animated.timing(v, { toValue: 1, duration, easing, useNativeDriver: true }),
           Animated.timing(v, { toValue: 0, duration, easing, useNativeDriver: true }),
         ]);
-    const loop = Animated.loop(seq, { resetBeforeIteration: o.yoyo === false });
+    const loop = Animated.loop(seq, { iterations: -1, resetBeforeIteration: o.yoyo === false });
     const t = setTimeout(() => loop.start(), o.delay ?? 0);
     return () => { clearTimeout(t); loop.stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps

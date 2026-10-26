@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleProp, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { Animated, Pressable, StyleProp, StyleSheet, Text, TextInput, TextInputInstance, TextInputProps, View, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, fonts, gradients } from '../theme';
@@ -15,7 +15,7 @@ type Props = Omit<TextInputProps, 'style'> & {
 };
 
 /** Glass input with a floating label and a gradient halo that ignites on focus. */
-const Field = forwardRef<TextInput, Props>(function Field(
+const Field = forwardRef<TextInputInstance, Props>(function Field(
   { label, icon, error, secure, style, value, onFocus, onBlur, multiline, ...rest },
   ref,
 ) {
